@@ -24,13 +24,21 @@ jobs:
           body: |
             ## Managed NAS Card ${{ steps.v.outputs.VERSION }}
 
-            ### Installazione manuale
-            Scarica i file JS e copiali in `config/www/`.
-
-            ### Via HACS
+            ### Installazione via HACS
             Aggiorna direttamente da HACS → Frontend.
+
+            ### Installazione manuale
+            Scarica i file JS e copiali in `config/www/`:
+            - `managed-nas-card.js`
+            - `managed-nas-detail-card.js`
+
+            Poi aggiungili come risorse Lovelace:
+            ```
+            /local/managed-nas-card.js
+            /local/managed-nas-detail-card.js
+            ```
 
             Vedi il [README](https://github.com/${{ github.repository }}#readme).
           files: |
-            managed-nas-card.js
-            managed-nas-detail-card.js
+            dist/managed-nas-card.js
+            dist/managed-nas-detail-card.js
