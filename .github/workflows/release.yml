@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: v
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Managed NAS Card ${{ steps.v.outputs.VERSION }}"
+          body: |
+            ## Managed NAS Card ${{ steps.v.outputs.VERSION }}
+
+            ### Installazione manuale
+            Scarica i file JS e copiali in `config/www/`.
+
+            ### Via HACS
+            Aggiorna direttamente da HACS → Frontend.
+
+            Vedi il [README](https://github.com/${{ github.repository }}#readme).
+          files: |
+            managed-nas-card.js
+            managed-nas-detail-card.js
