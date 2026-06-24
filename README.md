@@ -1,7 +1,7 @@
 # 🖥️ Managed NAS Card
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-[![GitHub release](https://img.shields.io/github/v/release/LoneWolf84/managed-nas-card)](https://github.com/LoneWolf84/managed-nas-card/releases)
+[![GitHub release](https://img.shields.io/github/v/release/YOUR_USERNAME/managed-nas-card)](https://github.com/YOUR_USERNAME/managed-nas-card/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Card Lovelace universale per NAS in Home Assistant.  
@@ -45,18 +45,23 @@ Appare **solo quando una selezione è attiva** — scompare automaticamente.
 ### Via HACS (consigliato)
 
 1. HACS → **Frontend** → `⋮` → **Repository personalizzati**
-2. URL: `https://github.com/LoneWolf84/managed-nas-card` — Categoria: **Lovelace**
+2. URL: `https://github.com/YOUR_USERNAME/managed-nas-card` — Categoria: **Lovelace**
 3. Installa e ricarica il browser
 
 ### Manuale
 
-1. Scarica `managed-nas-card.js` e `managed-nas-detail-card.js` dall'[ultima release](https://github.com/LoneWolf84/managed-nas-card/releases/latest)
-2. Copiali in `config/www/`
-3. HA → **Impostazioni → Dashboard → Risorse**:
-   ```
-   /local/managed-nas-card.js         → JavaScript Module
-   /local/managed-nas-detail-card.js  → JavaScript Module
-   ```
+1. Scarica `managed-nas-card.js` e `managed-nas-detail-card.js` dall'[ultima release](https://github.com/YOUR_USERNAME/managed-nas-card/releases/latest)
+2. Copiali entrambi in `config/www/`
+3. HA → **Impostazioni → Dashboard → Risorse** — aggiungi entrambi:
+
+   | URL | Tipo |
+   |-----|------|
+   | `/local/managed-nas-card.js` | JavaScript Module |
+   | `/local/managed-nas-detail-card.js` | JavaScript Module |
+
+4. Ricarica la pagina
+
+> **Via HACS** i file vengono copiati in `www/community/managed-nas-card/` e i percorsi diventano `/hacsfiles/managed-nas-card/managed-nas-card.js` — gestiti in automatico.
 
 ---
 
