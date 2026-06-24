@@ -1,0 +1,46 @@
+name: "🐛 Bug report"
+description: Segnala un problema con la card
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Versione card
+      placeholder: es. v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Versione Home Assistant
+      placeholder: es. 2024.6.0
+    validations:
+      required: true
+
+  - type: input
+    id: nas_brand
+    attributes:
+      label: Brand/Modello NAS
+      placeholder: es. MyBrand NAS-8Bay
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configurazione YAML
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrizione del problema
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Errori console (F12)
+      render: text
