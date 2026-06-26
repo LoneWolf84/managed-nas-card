@@ -9,55 +9,51 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DEFAULTS
+//  All values here are neutral starting points.
+//  Suffixes, labels and option strings are configured per-user in the card
+//  editor or via YAML — nothing here is specific to any brand or installation.
 // ─────────────────────────────────────────────────────────────────────────────
 const NAS_DEFAULTS = {
-  // ── Header ──────────────────────────────────────────────────────────────
-  title: 'NAS',          // logo text top-left
-  model: '',             // shown as "Modello: X" — set '' to hide
+  // ── Header ───────────────────────────────────────────────────────────────
+  title: 'NAS',
+  model: '',              // shown as "Modello: X" — leave empty to hide
 
-  // ── Entity bases (REQUIRED) ──────────────────────────────────────────────
-  sensor_base: '',       // e.g. sensor.mynas
-  binary_base: '',       // e.g. binary_sensor.mynas
+  // ── Entity bases — always empty; user fills via editor ───────────────────
+  sensor_base: '',        // REQUIRED — set via editor
+  binary_base: '',        // REQUIRED — set via editor
 
-  // ── Bay configuration ────────────────────────────────────────────────────
-  bays: 8,               // total number of drive bays
-  // grid_cols: how many columns in the bay grid
-  //   'auto' → same as original: ceil(bays/2) so 8 bays = 4 cols × 2 rows
-  //   2      → 2 columns (tall stack)
-  //   4      → 4 columns (original look for 8-bay)
-  //   any integer
-  grid_cols: 'auto',
-  bay_label: 'BAY',      // label shown under each bay  →  "BAY 1", "SLOT 3", etc.
+  // ── Bay configuration ─────────────────────────────────────────────────────
+  bays:      1,           // blank canvas default; user sets actual bay count
+  grid_cols: 'auto',      // 'auto' | 2 | 3 | 4 | 6 | 8
+  bay_label: 'BAY',       // text under each bay: "BAY 1", "SLOT 1", "DRIVE 1"
 
-  // ── input_select ────────────────────────────────────────────────────────
-  input_select: '',           // e.g. input_select.nas_selected_bay
-  input_select_none: 'Nessuna',
-  bay_option_prefix: 'Baia ', // option value prefix: "Baia 1", "Baia 2", ...
+  // ── input_select ──────────────────────────────────────────────────────────
+  input_select:               '',
+  input_select_none:          'None',    // the "no selection" option value — match your HA config
+  bay_option_prefix:          'Bay ',    // prefix of option values — match your HA config
 
-  // ── Action buttons ───────────────────────────────────────────────────────
-  reboot_button:   '',        // e.g. button.mynas_reboot
-  shutdown_button: '',        // e.g. button.mynas_shutdown
+  // ── Action buttons ────────────────────────────────────────────────────────
+  reboot_button:   '',
+  shutdown_button: '',
 
-  // ── Entity suffixes ──────────────────────────────────────────────────────
-  // Bay-level (replace {N} with bay number)
-  suffix_smart:       '_drive_{N}_stato_intelligente',
-  suffix_bad_sectors: '_drive_{N}_superato_il_numero_massimo_di_settori_danneggiati',
-  suffix_low_life:    '_drive_{N}_al_di_sotto_della_vita_residua_minima',
-  // System-level
-  suffix_temp:    '_temperatura',
-  suffix_uptime:  '_ultimo_avvio',       // ISO timestamp
-  suffix_safety:  '_stato_di_sicurezza', // binary: on = unsafe
+  // ── Entity suffixes ───────────────────────────────────────────────────────
+  // Generic placeholders — override in YAML to match your integration's naming.
+  // {N} is replaced by the bay number at runtime.
+  suffix_smart:       '_drive_{N}_smart_status',
+  suffix_bad_sectors: '_drive_{N}_bad_sectors_exceeded',
+  suffix_low_life:    '_drive_{N}_below_min_remaining_life',
+  suffix_temp:        '_temperature',
+  suffix_uptime:      '_last_boot',       // expects ISO timestamp
+  suffix_safety:      '_system_safety',   // binary: on = unsafe
 
-  // ── USB detection ────────────────────────────────────────────────────────
-  // Prefix-match on entity ids. Leave '' to disable USB widget entirely.
-  usb_prefix: '',            // e.g. sensor.mynas_usb_disk
-  // States considered "safe" for USB entities ending in _status
+  // ── USB detection ─────────────────────────────────────────────────────────
+  usb_prefix:     '',      // leave empty to hide USB widget; set e.g. 'sensor.mynas_usb'
   usb_safe_states: ['normal', 'unavailable', 'unknown'],
 
-  // ── SMART ok values ──────────────────────────────────────────────────────
-  smart_ok: ['normal', 'Ottimo'],
+  // ── SMART ok values ───────────────────────────────────────────────────────
+  smart_ok: ['normal'],   // add your integration's "healthy" status strings
 
-  // ── Feature flags ────────────────────────────────────────────────────────
+  // ── Feature flags ─────────────────────────────────────────────────────────
   show_reboot:   true,
   show_shutdown: true,
   show_usb:      true,
@@ -66,31 +62,30 @@ const NAS_DEFAULTS = {
   show_temp:     true,
   show_uptime:   true,
 
-  // ── Colors ───────────────────────────────────────────────────────────────
-  // All originals are hardcoded here as defaults; user can override any of them
-  color_bg:           '#1c1c1c',
-  color_border:       '#333',
-  color_text:         '#ffffff',
-  color_accent:       '#007bff',   // selection highlight, reboot btn, dot selected
-  color_info:         '#4a90e2',   // subtitle / info-row text
-  color_sep:          '#444',
-  color_bay_bg:       '#222',
-  color_bay_border:   '#444',
-  color_bay_sub:      '#555',
-  color_led_off:      '#333',      // original: "#333"
-  color_led_ok:       '#00ff41',
-  color_led_warn:     '#ff9800',
-  color_led_error:    '#f44336',
-  color_status_ok:    '#00ff41',
-  color_status_warn:  '#ff9800',
+  // ── Colors ────────────────────────────────────────────────────────────────
+  color_bg:          '#1c1c1c',
+  color_border:      '#333',
+  color_text:        '#ffffff',
+  color_accent:      '#007bff',
+  color_info:        '#4a90e2',
+  color_sep:         '#444',
+  color_bay_bg:      '#222',
+  color_bay_border:  '#444',
+  color_bay_sub:     '#555',
+  color_led_off:     '#333',
+  color_led_ok:      '#00ff41',
+  color_led_warn:    '#ff9800',
+  color_led_error:   '#f44336',
+  color_status_ok:   '#00ff41',
+  color_status_warn: '#ff9800',
 
-  // ── Labels ───────────────────────────────────────────────────────────────
-  label_temp:     'Temp:',
-  label_uptime:   'Avvio:',
-  label_status:   'STATUS',
-  label_alert:    'ALERT',
-  label_confirm_reboot:   'Riavviare?',
-  label_confirm_shutdown: 'Spegnere?',
+  // ── Labels — localise these in your YAML to match your language ───────────
+  label_temp:             'Temp:',
+  label_uptime:           'Uptime:',
+  label_status:           'STATUS',
+  label_alert:            'ALERT',
+  label_confirm_reboot:   'Reboot?',
+  label_confirm_shutdown: 'Shutdown?',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,23 +107,21 @@ class ManagedNasCard extends HTMLElement {
   }
 
   static getStubConfig() {
+    // Minimal blank canvas — user fills everything via the card editor.
+    // No bay count, no entity names, no language-specific strings.
     return {
-      title: 'NAS',
-      model: 'MyNAS-8',
-      bays: 8,
-      grid_cols: 'auto',
-      sensor_base: 'sensor.mynas',
-      binary_base: 'binary_sensor.mynas',
-      input_select: 'input_select.nas_selected_bay',
-      reboot_button: 'button.mynas_reboot',
-      shutdown_button: 'button.mynas_shutdown',
-      usb_prefix: 'sensor.mynas_usb_disk',
+      title:       'NAS',
+      model:       '',
+      bays:        1,
+      grid_cols:   'auto',
+      sensor_base: '',
+      binary_base: '',
     };
   }
 
   // ── connectedCallback ─────────────────────────────────────────────────────
   // Original: reset server-side only if _hass already available.
-  // Also resets _firstRender so next mount starts with a local "Nessuna".
+  // Also resets _firstRender so next mount starts with a local "none" state.
   connectedCallback() {
     this._firstRender = undefined; // reset the first-render flag on (re)mount
     if (this._hass && this._config?.input_select) {
@@ -145,7 +138,7 @@ class ManagedNasCard extends HTMLElement {
     if (!this._config) return;
 
     // ── ORIGINAL RESET LOGIC ─────────────────────────────────────────────
-    // First render of the session: force local selection to "Nessuna"
+    // First render of the session: force local selection to none
     // regardless of what the server says (avoids stale state on mount).
     if (this._firstRender === undefined) {
       this._selectedLocal = this._config.input_select_none;
@@ -227,7 +220,7 @@ class ManagedNasCard extends HTMLElement {
     const statusColor = isUnsafe ? cfg.color_status_warn : cfg.color_status_ok;
 
     // ── Bay grid columns ──────────────────────────────────────────────────
-    // 'auto' → ceil(bays/2) — same as original 8-bay = 4 cols
+    // 'auto' → ceil(bays/2)
     const cols = cfg.grid_cols === 'auto' || cfg.grid_cols === 0
       ? Math.ceil(cfg.bays / 2)
       : parseInt(cfg.grid_cols, 10) || Math.ceil(cfg.bays / 2);
@@ -389,11 +382,23 @@ class ManagedNasCard extends HTMLElement {
 //  VISUAL EDITOR
 // ─────────────────────────────────────────────────────────────────────────────
 class ManagedNasCardEditor extends HTMLElement {
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._step = 1; // 1=struttura, 2=sensori bay, 3=sistema+opzioni
+  }
+
   setConfig(config) {
     this._config = { ...NAS_DEFAULTS, ...config };
+    if (this._config.sensor_base && this._step === 1) this._step = 2;
     this._render();
   }
-  set hass(h) { this._hass = h; }
+
+  set hass(h) {
+    this._hass = h;
+    this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(p => p.hass = h);
+  }
 
   _fire(cfg) {
     this.dispatchEvent(new CustomEvent('config-changed', {
@@ -401,124 +406,343 @@ class ManagedNasCardEditor extends HTMLElement {
     }));
   }
 
-  _f(label, key, type = 'text', hint = '') {
-    const v = String(this._config?.[key] ?? '');
-    return `<div class="row">
+  _goStep(n) { this._step = n; this._render(); }
+
+  // ── CSS ───────────────────────────────────────────────────────────────────
+  _css() {
+    return `<style>
+      :host { display:block; font-family:Arial,sans-serif; font-size:13px; color:#eee; }
+      .steps { display:flex; gap:0; margin-bottom:18px; border-radius:8px; overflow:hidden; }
+      .step-btn {
+        flex:1; padding:8px 4px; text-align:center; font-size:11px; font-weight:bold;
+        text-transform:uppercase; letter-spacing:.5px; cursor:pointer; border:none;
+        background:#1e1e1e; color:#555; transition:.2s; border-right:1px solid #333;
+      }
+      .step-btn:last-child { border-right:none; }
+      .step-btn.active { background:#007bff; color:#fff; }
+      .step-btn.done   { background:#0a1f0a; color:#00ff41; }
+      h4 { margin:16px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+            color:#007bff; border-top:1px solid #2a2a2a; padding-top:12px; }
+      h4.first, h4:first-child { border-top:none; margin-top:0; }
+      .row { margin-bottom:10px; }
+      label { display:block; font-size:11px; color:#888; margin-bottom:3px; }
+      input, select {
+        width:100%; padding:6px 8px; border-radius:6px; border:1px solid #444;
+        background:#1a1a1a; color:#fff; font-size:13px; box-sizing:border-box;
+      }
+      small { display:block; font-size:10px; color:#555; margin-top:3px; }
+      .picker-row { margin-bottom:12px; }
+      .picker-row label { margin-bottom:4px; }
+      ha-entity-picker { display:block; }
+      details { margin:6px 0 10px; }
+      summary { font-size:11px; color:#007bff; cursor:pointer; user-select:none; margin-bottom:8px; }
+      .nav { display:flex; gap:8px; margin-top:16px; }
+      .nav-btn { flex:1; padding:8px; border-radius:6px; border:none; cursor:pointer; font-size:13px; font-weight:bold; }
+      .nav-btn.prev { background:#2a2a2a; color:#aaa; }
+      .nav-btn.next { background:#007bff; color:#fff; }
+      .color-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .color-row { display:flex; align-items:center; gap:8px; }
+      .color-row label { flex:1; margin:0; }
+      .color-row input[type=color] { width:36px; height:28px; padding:2px; border-radius:4px; flex-shrink:0; }
+      .toggle-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+      .toggle-row label { margin:0; }
+      .toggle-row select { width:auto; }
+      .hint { font-size:11px; color:#555; margin:0 0 12px; line-height:1.5; }
+      code { background:#222; padding:1px 5px; border-radius:3px; font-size:10px; }
+    </style>`;
+  }
+
+  _stepBar() {
+    const c = this._config;
+    const done1 = !!(c.sensor_base && c.binary_base);
+    const labels = ['1 · Struttura', '2 · Sensori bay', '3 · Sistema & Opzioni'];
+    return `<div class="steps">` + labels.map((l, i) => {
+      const n = i + 1;
+      const cls = this._step === n ? 'active' : (n < this._step || (n === 1 && done1) ? 'done' : '');
+      return `<button class="step-btn ${cls}" onclick="this.getRootNode().host._goStep(${n})">${l}</button>`;
+    }).join('') + `</div>`;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  _picker(label, key, domain = '', hint = '') {
+    const val = this._config?.[key] || '';
+    return `<div class="picker-row">
       <label>${label}</label>
-      <input type="${type}" value="${v.replace(/"/g,'&quot;')}" data-key="${key}"
-             onchange="this.getRootNode().host._ch(event)"/>
+      <ha-entity-picker
+        data-key="${key}"
+        .value="${val}"
+        .hass="${{}}"
+        ${domain ? `.includeDomains='["${domain}"]'` : ''}
+        allow-custom-entity
+      ></ha-entity-picker>
       ${hint ? `<small>${hint}</small>` : ''}
     </div>`;
   }
 
-  _s(label, key, opts) {
+  _input(label, key, type = 'text', hint = '') {
+    const v = String(this._config?.[key] ?? '');
+    return `<div class="row"><label>${label}</label>
+      <input type="${type}" value="${v.replace(/"/g,'&quot;')}" data-key="${key}"
+             onchange="this.getRootNode().host._inputChange(event)"/>
+      ${hint ? `<small>${hint}</small>` : ''}</div>`;
+  }
+
+  _sel(label, key, opts) {
     const cur = String(this._config?.[key] ?? opts[0].v);
-    const os  = opts.map(o => `<option value="${o.v}"${cur===String(o.v)?' selected':''}>${o.l}</option>`).join('');
-    return `<div class="row">
+    const os = opts.map(o => `<option value="${o.v}"${cur===String(o.v)?' selected':''}>${o.l}</option>`).join('');
+    return `<div class="row"><label>${label}</label>
+      <select data-key="${key}" onchange="this.getRootNode().host._inputChange(event)">${os}</select></div>`;
+  }
+
+  _color(label, key) {
+    const v = this._config?.[key] || '#000000';
+    return `<div class="color-row">
       <label>${label}</label>
-      <select data-key="${key}" onchange="this.getRootNode().host._ch(event)">${os}</select>
+      <input type="color" value="${v}" data-key="${key}" onchange="this.getRootNode().host._inputChange(event)"/>
     </div>`;
   }
 
-  _render() {
-    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host{display:block;padding:16px;font-family:Arial,sans-serif;font-size:13px;color:#eee}
-        h4{margin:16px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
-           color:#007bff;border-top:1px solid #333;padding-top:12px}
-        h4:first-child{border-top:none;margin-top:0}
-        .row{margin-bottom:10px}
-        label{display:block;font-size:11px;color:#888;margin-bottom:3px}
-        input,select{width:100%;padding:5px 8px;border-radius:5px;border:1px solid #444;
-                     background:#1a1a1a;color:#fff;font-size:13px;box-sizing:border-box}
-        small{display:block;font-size:10px;color:#555;margin-top:2px}
-      </style>
-
-      <h4>Dispositivo</h4>
-      ${this._f('Titolo (logo)',       'title')}
-      ${this._f('Modello',             'model',      'text', 'es. MyNAS-8Bay — lascia vuoto per nascondere')}
-
-      <h4>Bay</h4>
-      ${this._f('Numero bay',          'bays',       'number')}
-      ${this._s('Colonne griglia',     'grid_cols',  [
-          {v:'auto', l:'Auto — metà bay per riga (es. 8 bay = 4 col × 2 righe)'},
-          {v:'2',    l:'2 colonne (stack verticale)'},
-          {v:'3',    l:'3 colonne'},
-          {v:'4',    l:'4 colonne (originale 8-bay)'},
-          {v:'6',    l:'6 colonne'},
-          {v:'8',    l:'8 colonne (riga singola)'},
-        ])}
-      ${this._f('Etichetta bay',       'bay_label',  'text', 'es. BAY · SLOT · DRIVE')}
-
-      <h4>Entità — obbligatorie</h4>
-      ${this._f('Sensor base',         'sensor_base','text', 'es. sensor.mynas')}
-      ${this._f('Binary sensor base',  'binary_base','text', 'es. binary_sensor.mynas')}
-
-      <h4>Entità — opzionali</h4>
-      ${this._f('Input select bay',    'input_select',   'text', 'es. input_select.nas_selected_bay')}
-      ${this._f('Prefisso opzione bay','bay_option_prefix','text','es. "Baia " → "Baia 1"')}
-      ${this._f('Valore nessuna',      'input_select_none')}
-      ${this._f('Pulsante reboot',     'reboot_button',  'text', 'es. button.mynas_reboot')}
-      ${this._f('Pulsante shutdown',   'shutdown_button','text', 'es. button.mynas_shutdown')}
-      ${this._f('Prefisso entità USB', 'usb_prefix',     'text', 'es. sensor.mynas_usb_disk — vuoto = nasconde widget')}
-
-      <h4>Suffissi entità bay (avanzato — {N} = numero bay)</h4>
-      ${this._f('SMART status',           'suffix_smart')}
-      ${this._f('Settori danneggiati',    'suffix_bad_sectors')}
-      ${this._f('Vita residua bassa',     'suffix_low_life')}
-      ${this._f('Temperatura',            'suffix_temp')}
-      ${this._f('Ultimo avvio (ISO)',     'suffix_uptime')}
-      ${this._f('Stato sicurezza (bin)',  'suffix_safety')}
-
-      <h4>Valori SMART OK</h4>
-      ${this._f('Valori OK (virgola)',    'smart_ok_raw','text','es. normal,Ottimo,Good,Normal')}
-
-      <h4>Colori</h4>
-      ${this._f('Sfondo card',           'color_bg',          'color')}
-      ${this._f('Bordo card',            'color_border',      'color')}
-      ${this._f('Testo',                 'color_text',        'color')}
-      ${this._f('Accento (selezione)',   'color_accent',      'color')}
-      ${this._f('Info/subtitle',         'color_info',        'color')}
-      ${this._f('Sfondo bay',            'color_bay_bg',      'color')}
-      ${this._f('Bordo bay',             'color_bay_border',  'color')}
-      ${this._f('Testo etichetta bay',   'color_bay_sub',     'color')}
-      ${this._f('LED spento',            'color_led_off',     'color')}
-      ${this._f('LED OK',                'color_led_ok',      'color')}
-      ${this._f('LED warning',           'color_led_warn',    'color')}
-      ${this._f('LED errore',            'color_led_error',   'color')}
-
-      <h4>Funzionalità</h4>
-      ${this._s('Pulsante reboot',   'show_reboot',   [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Pulsante shutdown', 'show_shutdown', [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Widget USB',        'show_usb',      [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Dot STATUS',        'show_status',   [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Dot ALERT',         'show_alert',    [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Temperatura',       'show_temp',     [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-      ${this._s('Uptime',            'show_uptime',   [{v:'true',l:'Sì'},{v:'false',l:'No'}])}
-
-      <h4>Testi</h4>
-      ${this._f('Etichetta Temp',    'label_temp')}
-      ${this._f('Etichetta Avvio',   'label_uptime')}
-      ${this._f('Etichetta STATUS',  'label_status')}
-      ${this._f('Etichetta ALERT',   'label_alert')}
-      ${this._f('Conferma reboot',   'label_confirm_reboot')}
-      ${this._f('Conferma shutdown', 'label_confirm_shutdown')}
-    `;
+  _toggle(label, key) {
+    const v = String(this._config?.[key] ?? 'true');
+    return `<div class="toggle-row">
+      <label>${label}</label>
+      <select data-key="${key}" onchange="this.getRootNode().host._inputChange(event)" style="width:auto">
+        <option value="true"${v==='true'?' selected':''}>Sì</option>
+        <option value="false"${v==='false'?' selected':''}>No</option>
+      </select>
+    </div>`;
   }
 
-  _ch(e) {
+  // ── STEP 1: Struttura ─────────────────────────────────────────────────────
+  _renderStep1() {
+    return `${this._css()}<div style="padding:16px">
+      ${this._stepBar()}
+
+      <h4 class="first">Dispositivo</h4>
+      ${this._input('Titolo (logo)', 'title')}
+      ${this._input('Modello', 'model', 'text', 'es. RS1221+, TS-464 — lascia vuoto per nascondere')}
+
+      <h4>Bay drive</h4>
+      ${this._input('Numero bay', 'bays', 'number')}
+      ${this._sel('Colonne griglia', 'grid_cols', [
+        {v:'auto', l:'Auto — ceil(bay/2) colonne per riga'},
+        {v:'2',    l:'2 colonne (stack verticale)'},
+        {v:'3',    l:'3 colonne'},
+        {v:'4',    l:'4 colonne'},
+        {v:'6',    l:'6 colonne'},
+        {v:'8',    l:'8 colonne (riga singola)'},
+      ])}
+      ${this._input('Etichetta bay', 'bay_label', 'text', 'es. BAY · SLOT · DRIVE')}
+
+      <div class="nav">
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(2)">Avanti → Sensori bay</button>
+      </div>
+    </div>`;
+  }
+
+  // ── STEP 2: Sensori bay ───────────────────────────────────────────────────
+  _renderStep2() {
+    const bays = parseInt(this._config.bays, 10) || 8;
+
+    const bayPickersHtml = Array.from({length: bays}, (_, i) => i + 1).map(n => `
+      <details>
+        <summary>Bay ${n}</summary>
+        ${this._picker(`SMART status bay ${n}`, `override_smart_${n}`, 'sensor',
+            `Default: {sensor_base} + suffix_smart (configured below)`)}
+        ${this._picker(`Settori danneggiati bay ${n}`, `override_bad_${n}`, 'binary_sensor',
+            `Default: {binary_base} + suffix_bad_sectors`)}
+        ${this._picker(`Vita residua bassa bay ${n}`, `override_life_${n}`, 'binary_sensor',
+            `Default: {binary_base} + suffix_low_life`)}
+        ${this._picker(`Temperatura bay ${n}`, `override_temp_${n}`, 'sensor',
+            `Default: {sensor_base} + suffix_temp`)}
+      </details>`).join('');
+
+    return `${this._css()}<div style="padding:16px">
+      ${this._stepBar()}
+
+      <h4 class="first">Entità base (obbligatorie)</h4>
+      <p class="hint">Seleziona qualsiasi entità del tuo NAS: il prefisso base viene estratto automaticamente.</p>
+      ${this._picker('Sensor base', 'sensor_base', 'sensor',
+          'Seleziona qualsiasi sensor del tuo NAS — il prefisso viene estratto')}
+      ${this._picker('Binary sensor base', 'binary_base', 'binary_sensor',
+          'Seleziona qualsiasi binary_sensor del tuo NAS')}
+
+      <h4>Azioni</h4>
+      ${this._picker('Input select selezione bay', 'input_select', 'input_select')}
+      ${this._picker('Pulsante reboot', 'reboot_button', 'button')}
+      ${this._picker('Pulsante shutdown', 'shutdown_button', 'button')}
+
+      <h4>USB</h4>
+      <p class="hint">Lascia vuoto per nascondere il widget USB.</p>
+      ${this._input('Prefisso entità USB', 'usb_prefix', 'text',
+          'prefisso comune entità USB — rileva tutto ciò che inizia con questo')}
+
+      <h4>Override per bay (opzionale)</h4>
+      <p class="hint">Lascia vuoto per usare i suffissi automatici <code>{base}_drive_{N}_...</code></p>
+      ${bayPickersHtml}
+
+      <div class="nav">
+        <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(1)">← Struttura</button>
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">Avanti → Sistema</button>
+      </div>
+    </div>`;
+  }
+
+  // ── STEP 3: Sistema & Opzioni ─────────────────────────────────────────────
+  _renderStep3() {
+    return `${this._css()}<div style="padding:16px">
+      ${this._stepBar()}
+
+      <h4 class="first">Sensori sistema</h4>
+      <p class="hint">Usati per temperatura e uptime nell'header. Lascia vuoto per usare i suffissi.</p>
+      ${this._picker('Temperatura NAS', 'override_temp_sys', 'sensor')}
+      ${this._picker('Ultimo avvio (timestamp ISO)', 'override_uptime', 'sensor')}
+      ${this._picker('Stato sicurezza (binary)', 'override_safety', 'binary_sensor')}
+
+      <h4>Valori SMART OK</h4>
+      ${this._input('Valori OK (separati da virgola)', 'smart_ok_raw', 'text',
+          'e.g. normal,Good — healthy SMART status values for your integration')}
+
+      <h4>Funzionalità</h4>
+      ${this._toggle('Pulsante reboot',   'show_reboot')}
+      ${this._toggle('Pulsante shutdown', 'show_shutdown')}
+      ${this._toggle('Widget USB',        'show_usb')}
+      ${this._toggle('Dot STATUS',        'show_status')}
+      ${this._toggle('Dot ALERT',         'show_alert')}
+      ${this._toggle('Temperatura',       'show_temp')}
+      ${this._toggle('Uptime',            'show_uptime')}
+
+      <h4>Colori</h4>
+      <div class="color-grid">
+        ${this._color('Sfondo card',     'color_bg')}
+        ${this._color('Bordo card',      'color_border')}
+        ${this._color('Testo',           'color_text')}
+        ${this._color('Accento',         'color_accent')}
+        ${this._color('Info subtitle',   'color_info')}
+        ${this._color('Sfondo bay',      'color_bay_bg')}
+        ${this._color('Bordo bay',       'color_bay_border')}
+        ${this._color('Etichetta bay',   'color_bay_sub')}
+        ${this._color('LED spento',      'color_led_off')}
+        ${this._color('LED OK',          'color_led_ok')}
+        ${this._color('LED warning',     'color_led_warn')}
+        ${this._color('LED errore',      'color_led_error')}
+      </div>
+
+      <details>
+        <summary>⚙ Suffissi entità avanzati</summary>
+        ${this._input('SMART status ({N})',          'suffix_smart')}
+        ${this._input('Settori danneggiati ({N})',   'suffix_bad_sectors')}
+        ${this._input('Vita residua bassa ({N})',    'suffix_low_life')}
+        ${this._input('Temperatura ({N})',           'suffix_temp')}
+        ${this._input('Ultimo avvio',               'suffix_uptime')}
+        ${this._input('Stato sicurezza',            'suffix_safety')}
+      </details>
+
+      <details>
+        <summary>⚙ Testi personalizzati</summary>
+        ${this._input('Etichetta Temp',    'label_temp')}
+        ${this._input('Etichetta Avvio',   'label_uptime')}
+        ${this._input('Etichetta STATUS',  'label_status')}
+        ${this._input('Etichetta ALERT',   'label_alert')}
+        ${this._input('Prefisso opzione bay', 'bay_option_prefix', 'text', 'match your input_select option values — e.g. "Bay 1", "Slot 1"')}
+        ${this._input('Valore nessuna',    'input_select_none')}
+        ${this._input('Conferma reboot',   'label_confirm_reboot')}
+        ${this._input('Conferma shutdown', 'label_confirm_shutdown')}
+      </details>
+
+      <div class="nav">
+        <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(2)">← Sensori bay</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────────
+  _render() {
+    if (!this.shadowRoot) return;
+    this.shadowRoot.innerHTML =
+      this._step === 1 ? this._renderStep1() :
+      this._step === 2 ? this._renderStep2() :
+                         this._renderStep3();
+
+    requestAnimationFrame(() => {
+      this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(p => {
+        if (this._hass) p.hass = this._hass;
+        p.addEventListener('value-changed', e => this._pickerChange(e));
+      });
+    });
+  }
+
+  // ── Change handlers ───────────────────────────────────────────────────────
+  _pickerChange(e) {
+    const key = e.target.dataset.key;
+    if (!key) return;
+    const val = e.detail.value || '';
+    const cfg = { ...this._config };
+
+    if (key === 'sensor_base')  { cfg.sensor_base  = this._extractBase(val, false); }
+    else if (key === 'binary_base') { cfg.binary_base = this._extractBase(val, true); }
+    else { cfg[key] = val; }
+
+    this._config = cfg;
+    this._fire(cfg);
+  }
+
+  _extractBase(entityId, isBinary) {
+    if (!entityId) return '';
+    const withoutDomain = entityId.replace(/^(sensor|binary_sensor)\./, '');
+    // These suffix patterns are used ONLY for auto-detecting the entity base prefix
+    // when the user selects an entity in the editor. They cover common NAS and switch
+    // integration naming conventions. They are never exposed to end users.
+    const suffixes = [
+      // Common NAS integration suffixes (various languages/integrations)
+      '_drive_\\d+_stato_intelligente', '_drive_\\d+_stato',
+      '_drive_\\d+_temperatura', '_drive_\\d+_superato_il_numero_massimo_di_settori_danneggiati',
+      '_drive_\\d+_al_di_sotto_della_vita_residua_minima',
+      '_volume_\\d+_stato', '_volume_\\d+_dimensione_totale',
+      '_volume_\\d+_spazio_utilizzato', '_volume_\\d+_volume_utilizzato',
+      '_volume_\\d+_temperatura_media_del_disco', '_volume_\\d+_temperatura_massima_del_disco',
+      '_utilizzo_della_cpu_totale', '_utilizzo_della_cpu_utente',
+      '_utilizzo_della_cpu_sistema', '_utilizzo_della_cpu_altro',
+      '_carico_medio_della_cpu_1_min', '_carico_medio_della_cpu_5_min',
+      '_carico_medio_della_cpu_15_min', '_utilizzo_della_memoria_reale',
+      '_memoria_disponibile_reale', '_memoria_disponibile_scambio',
+      '_memoria_in_cache', '_velocita_di_caricamento', '_velocita_di_scaricamento',
+      '_temperatura', '_ultimo_avvio', '_stato_di_sicurezza',
+      // English NAS suffix variants
+      '_drive_\\d+_smart_status', '_drive_\\d+_temperature',
+      '_drive_\\d+_bad_sectors_exceeded', '_drive_\\d+_below_min_remaining_life',
+      '_volume_\\d+_status', '_volume_\\d+_total_size', '_volume_\\d+_used_space',
+      '_temperature', '_last_boot', '_system_safety',
+      '_cpu_usage', '_memory_usage', '_network_upload', '_network_download',
+      // Common switch integration suffixes
+      '_port_\\d+_status', '_port_\\d+_link_speed', '_port_\\d+_traffic_received',
+      '_port_\\d+_traffic_sent', '_port_\\d+_io', '_port_\\d+_receiving',
+      '_port_\\d+_sending', '_port_\\d+_total_received', '_port_\\d+_total_sent',
+      '_ip_address', '_switch_name', '_switch_bootlader', '_switch_firmware',
+      '_switch_serial_number', '_response_time_seconds',
+      '_switch_io', '_switch_traffic_received', '_switch_traffic_sent',
+    ];
+    for (const suf of suffixes) {
+      const m = withoutDomain.match(new RegExp('^(.+?)' + suf + '$'));
+      if (m) return `${isBinary ? 'binary_sensor' : 'sensor'}.${m[1]}`;
+    }
+    return entityId;
+  }
+
+  _inputChange(e) {
     const key = e.target.dataset.key;
     const val = e.target.value;
     const cfg = { ...this._config };
 
-    if (key === 'bays')        { cfg.bays = parseInt(val, 10) || 8; this._fire(cfg); return; }
-    if (key === 'smart_ok_raw'){ cfg.smart_ok = val.split(',').map(v => v.trim()).filter(Boolean); this._fire(cfg); return; }
-
-    const boolKeys = ['show_reboot','show_shutdown','show_usb','show_status','show_alert','show_temp','show_uptime'];
-    if (boolKeys.includes(key)) { cfg[key] = val === 'true'; this._fire(cfg); return; }
-
+    if (key === 'bays') { cfg.bays = parseInt(val,10)||8; this._config=cfg; this._fire(cfg); return; }
+    if (key === 'smart_ok_raw') {
+      cfg.smart_ok = val.split(',').map(v=>v.trim()).filter(Boolean);
+      this._config=cfg; this._fire(cfg); return;
+    }
+    const bools = ['show_reboot','show_shutdown','show_usb','show_status','show_alert','show_temp','show_uptime'];
+    if (bools.includes(key)) { cfg[key] = val==='true'; this._config=cfg; this._fire(cfg); return; }
     cfg[key] = val;
+    this._config = cfg;
     this._fire(cfg);
   }
 }

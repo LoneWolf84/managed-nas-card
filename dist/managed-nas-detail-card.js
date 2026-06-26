@@ -21,17 +21,19 @@ const NAS_DETAIL_DEFAULTS = {
   bay_option_prefix: 'Baia ',      // "Baia 1", "Baia 2", ...
 
   // Entity base
-  sensor_base: '',                 // REQUIRED  e.g. sensor.mynas
-  binary_base: '',                 // REQUIRED  e.g. binary_sensor.mynas
+  sensor_base: '',                 // REQUIRED — configure via the card editor
+  binary_base: '',                 // REQUIRED — configure via the card editor
 
   // Number of bays (for Alert grid)
   bays: 8,
 
   // ── Bay panel suffixes ({N} = bay number) ─────────────────────────────────
   // Volume space
-  suffix_vol_used:  '_volume_{N}_spazio_usato',
-  suffix_vol_free:  '_volume_{N}_spazio_libero',
-  suffix_vol_state: '_volume_{N}_stato',        // e.g. "normal", "attention"
+  suffix_vol_used:  '_volume_{N}_spazio_usato',      // GB usato (es. spazio_utilizzato)
+  suffix_vol_free:  '_volume_{N}_spazio_libero',      // GB libero — se vuoto viene calcolato da totale-usato
+  suffix_vol_total: '_volume_{N}_dimensione_totale',  // GB totale — per calcolare il libero
+  suffix_vol_pct:   '_volume_{N}_volume_utilizzato',  // % usato — per etichetta donut
+  suffix_vol_state: '_volume_{N}_stato',              // es. 'normal', 'attention'
   // Disk temperature
   suffix_temp:      '_drive_{N}_temperatura',
   // Bay-level alerts (binary)
@@ -42,7 +44,8 @@ const NAS_DETAIL_DEFAULTS = {
   suffix_ram_pct:      '_utilizzo_memoria',
   suffix_ram_used:     '_memoria_in_uso',
   suffix_ram_free:     '_memoria_disponibile',
-  suffix_swap_used:    '_swap_in_uso',
+  suffix_swap_total:   '_swap_totale',           // se vuoto, swap usato = swap_total - swap_free
+  suffix_swap_used:    '_swap_in_uso',             // se vuoto, viene calcolato da totale-disponibile
   suffix_swap_free:    '_swap_disponibile',
   suffix_cpu_total:    '_utilizzo_cpu',
   suffix_cpu_sys:      '_utilizzo_cpu_sistema',
@@ -126,9 +129,9 @@ class ManagedNasDetailCard extends HTMLElement {
   }
   static getStubConfig() {
     return {
-      input_select: 'input_select.nas_selected_bay',
-      sensor_base:  'sensor.mynas',
-      binary_base:  'binary_sensor.mynas',
+      input_select: '',
+      sensor_base:  '',
+      binary_base:  '',
       bays: 8,
     };
   }
@@ -444,18 +447,34 @@ class ManagedNasDetailCard extends HTMLElement {
     const base = cfg.sensor_base;
     const st   = this._hass.states;
 
-    const usedId  = base + cfg.suffix_vol_used.replace('{N}', n);
-    const freeId  = base + cfg.suffix_vol_free.replace('{N}', n);
-    const stateId = base + cfg.suffix_vol_state.replace('{N}', n);
-    const tempId  = base + cfg.suffix_temp.replace('{N}', n);
+    const usedId   = base + cfg.suffix_vol_used.replace('{N}', n);
+    const freeId   = base + (cfg.suffix_vol_free  || '').replace('{N}', n);
+    const totalId  = base + (cfg.suffix_vol_total || '').replace('{N}', n);
+    const pctId    = base + (cfg.suffix_vol_pct   || '').replace('{N}', n);
+    const stateId  = base + cfg.suffix_vol_state.replace('{N}', n);
+    const tempId   = base + cfg.suffix_temp.replace('{N}', n);
 
-    const used      = st[usedId]?.state    || '--';
-    const free      = st[freeId]?.state    || '--';
-    const volState  = st[stateId]?.state   || '--';
-    const temp      = st[tempId]?.state    || '--';
+    const used      = st[usedId]?.state   || '--';
+    const volState  = st[stateId]?.state  || '--';
+    const temp      = st[tempId]?.state   || '--';
     const usedUnit  = _unit(usedId,  this._hass) || 'GB';
-    const freeUnit  = _unit(freeId,  this._hass) || 'GB';
     const tempUnit  = _unit(tempId,  this._hass) || '°C';
+    const pctVal    = pctId   ? (st[pctId]?.state   || null) : null;
+
+    // free space: use dedicated entity if exists, else calculate from total-used
+    let free, freeUnit;
+    const freeRaw = freeId ? st[freeId]?.state : null;
+    if (freeRaw && freeRaw !== 'unavailable' && freeRaw !== 'unknown') {
+      free     = freeRaw;
+      freeUnit = _unit(freeId, this._hass) || 'GB';
+    } else if (totalId && st[totalId]?.state) {
+      const tot = parseFloat(st[totalId].state);
+      const usd = parseFloat(used);
+      free     = (!isNaN(tot) && !isNaN(usd)) ? String((tot - usd).toFixed(2)) : '--';
+      freeUnit = _unit(totalId, this._hass) || 'GB';
+    } else {
+      free = '--'; freeUnit = 'GB';
+    }
 
     // Volume state color
     const vsColor = volState === 'normal' || volState === 'Normale'
@@ -548,8 +567,25 @@ class ManagedNasDetailCard extends HTMLElement {
 
     const ram     = g(cfg.suffix_ram_pct);
     const ramFree = g(cfg.suffix_ram_free);
-    const swapU   = g(cfg.suffix_swap_used);
     const swapF   = g(cfg.suffix_swap_free);
+
+    // swap used: use dedicated entity if configured, else calculate from total-free
+    let swapU;
+    const swapUsedId = cfg.suffix_swap_used ? b + cfg.suffix_swap_used : null;
+    const swapUsedRaw = swapUsedId ? st[swapUsedId]?.state : null;
+    if (swapUsedRaw && swapUsedRaw !== 'unavailable' && swapUsedRaw !== 'unknown') {
+      swapU = { val: swapUsedRaw, unit: _unit(swapUsedId, this._hass), fmt: _fmtNum(swapUsedRaw) };
+    } else if (cfg.suffix_swap_total) {
+      const totId  = b + cfg.suffix_swap_total;
+      const totRaw = st[totId]?.state;
+      const freeRaw2 = swapF.val;
+      const tot = parseFloat(totRaw);
+      const fre = parseFloat(freeRaw2);
+      const usedCalc = (!isNaN(tot) && !isNaN(fre)) ? (tot - fre).toFixed(2) : '--';
+      swapU = { val: usedCalc, unit: _unit(totId, this._hass) || 'GB', fmt: _fmtNum(usedCalc) };
+    } else {
+      swapU = { val: '--', unit: 'GB', fmt: '--' };
+    }
     const cpuT    = g(cfg.suffix_cpu_total);
     const load1   = g(cfg.suffix_load_1);
     const load5   = g(cfg.suffix_load_5);
@@ -754,16 +790,18 @@ class ManagedNasDetailCardEditor extends HTMLElement {
 
       <h4>Collegamento</h4>
       ${this._f('Input select',       'input_select',       'text', 'stessa entità della managed-nas-card')}
-      ${this._f('Sensor base',        'sensor_base',        'text', 'es. sensor.mynas')}
-      ${this._f('Binary sensor base', 'binary_base',        'text', 'es. binary_sensor.mynas')}
+      ${this._f('Sensor base',        'sensor_base',        'text', '')}
+      ${this._f('Binary sensor base', 'binary_base',        'text', '')}
       ${this._f('Numero bay',         'bays',               'number')}
       ${this._f('Prefisso opzione bay','bay_option_prefix', 'text', 'es. "Baia " → deve corrispondere alla nas-card')}
       ${this._f('Valore nessuna',     'input_select_none')}
 
       <h4>Suffissi — Bay ({N} = numero bay)</h4>
-      ${this._f('Spazio usato volume',   'suffix_vol_used')}
-      ${this._f('Spazio libero volume',  'suffix_vol_free')}
-      ${this._f('Stato volume',          'suffix_vol_state')}
+      ${this._f('Spazio usato volume',       'suffix_vol_used',  'text', 'es. _volume_{N}_spazio_utilizzato')}
+      ${this._f('Spazio libero volume',       'suffix_vol_free',  'text', 'lascia vuoto → calcolato da totale-usato')}
+      ${this._f('Dimensione totale volume',   'suffix_vol_total', 'text', 'es. _volume_{N}_dimensione_totale — per calcolo libero')}
+      ${this._f('% usato volume (donut)',     'suffix_vol_pct',   'text', 'es. _volume_{N}_volume_utilizzato')}
+      ${this._f('Stato volume',               'suffix_vol_state')}
       ${this._f('Temperatura disco',     'suffix_temp')}
       ${this._f('Settori danneggiati',   'suffix_bad_sectors')}
       ${this._f('Vita residua bassa',    'suffix_low_life')}
@@ -771,8 +809,9 @@ class ManagedNasDetailCardEditor extends HTMLElement {
       <h4>Suffissi — Status</h4>
       ${this._f('RAM %',              'suffix_ram_pct')}
       ${this._f('RAM disponibile',    'suffix_ram_free')}
-      ${this._f('SWAP usato',         'suffix_swap_used')}
-      ${this._f('SWAP disponibile',   'suffix_swap_free')}
+      ${this._f('SWAP usato',          'suffix_swap_used',  'text', 'lascia vuoto → calcolato da totale-disponibile')}
+      ${this._f('SWAP totale',         'suffix_swap_total', 'text', 'es. _memoria_totale_scambio — per calcolo swap usato')}
+      ${this._f('SWAP disponibile',    'suffix_swap_free')}
       ${this._f('CPU totale %',       'suffix_cpu_total')}
       ${this._f('CPU sistema %',      'suffix_cpu_sys')}
       ${this._f('CPU utente %',       'suffix_cpu_user')}
