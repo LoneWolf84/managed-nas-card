@@ -397,7 +397,11 @@ class ManagedNasCardEditor extends HTMLElement {
 
   set hass(h) {
     this._hass = h;
-    this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(p => p.hass = h);
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(p => p.hass = h);
+      // Attach any pending pickers that were waiting for hass
+      this._attachPickers();
+    }
   }
 
   _fire(cfg) {
@@ -464,19 +468,40 @@ class ManagedNasCardEditor extends HTMLElement {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  _picker(label, key, domain = '', hint = '') {
-    const val = this._config?.[key] || '';
-    return `<div class="picker-row">
+  _picker(label, key, domain, hint) {
+    // Placeholder div — real ha-entity-picker is created in _attachPickers()
+    return `<div class="picker-row" data-picker-key="${key}" data-picker-domain="${domain||''}" data-picker-hint="${hint||''}">
       <label>${label}</label>
-      <ha-entity-picker
-        data-key="${key}"
-        .value="${val}"
-        .hass="${{}}"
-        ${domain ? `.includeDomains='["${domain}"]'` : ''}
-        allow-custom-entity
-      ></ha-entity-picker>
+      <div class="picker-slot" id="picker-${key}"></div>
       ${hint ? `<small>${hint}</small>` : ''}
     </div>`;
+  }
+
+  _attachPickers() {
+    if (!this.shadowRoot) return;
+    this.shadowRoot.querySelectorAll('[data-picker-key]').forEach(row => {
+      const key    = row.dataset.pickerKey;
+      const domain = row.dataset.pickerDomain;
+      const slot   = row.querySelector('.picker-slot');
+      if (!slot || slot.querySelector('ha-entity-picker')) return;
+
+      const picker = document.createElement('ha-entity-picker');
+      picker.setAttribute('allow-custom-entity', '');
+      if (domain) picker.includeDomains = [domain];
+      if (this._hass) picker.hass = this._hass;
+      const current = this._config?.[key] || '';
+      if (current) picker.value = current;
+
+      picker.addEventListener('value-changed', (e) => {
+        const val = e.detail?.value ?? '';
+        if (val === (this._config?.[key] || '')) return;
+        this._config = { ...this._config, [key]: val };
+        this._fire(this._config);
+        picker.value = val;
+      });
+
+      slot.appendChild(picker);
+    });
   }
 
   _input(label, key, type = 'text', hint = '') {
@@ -561,11 +586,9 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._stepBar()}
 
       <h4 class="first">Entità base (obbligatorie)</h4>
-      <p class="hint">Seleziona qualsiasi entità del tuo NAS: il prefisso base viene estratto automaticamente.</p>
-      ${this._picker('Sensor base', 'sensor_base', 'sensor',
-          'Seleziona qualsiasi sensor del tuo NAS — il prefisso viene estratto')}
-      ${this._picker('Binary sensor base', 'binary_base', 'binary_sensor',
-          'Seleziona qualsiasi binary_sensor del tuo NAS')}
+      <p class="hint">Inserisci il prefisso comune di tutte le entità del tuo NAS, es. <code>sensor.mynas</code> → genera <code>sensor.mynas_temperatura</code>, <code>sensor.mynas_drive_1_temperatura</code>, ecc.</p>
+      ${this._input('Sensor base', 'sensor_base', 'text', 'es. sensor.mynas')}
+      ${this._input('Binary sensor base', 'binary_base', 'text', 'es. binary_sensor.mynas')}
 
       <h4>Azioni</h4>
       ${this._picker('Input select selezione bay', 'input_select', 'input_select')}
@@ -663,71 +686,12 @@ class ManagedNasCardEditor extends HTMLElement {
       this._step === 1 ? this._renderStep1() :
       this._step === 2 ? this._renderStep2() :
                          this._renderStep3();
-
-    requestAnimationFrame(() => {
-      this.shadowRoot.querySelectorAll('ha-entity-picker').forEach(p => {
-        if (this._hass) p.hass = this._hass;
-        p.addEventListener('value-changed', e => this._pickerChange(e));
-      });
-    });
+    requestAnimationFrame(() => this._attachPickers());
   }
 
   // ── Change handlers ───────────────────────────────────────────────────────
-  _pickerChange(e) {
-    const key = e.target.dataset.key;
-    if (!key) return;
-    const val = e.detail.value || '';
-    const cfg = { ...this._config };
+  // Picker changes are handled inline in _attachPickers() per picker.
 
-    if (key === 'sensor_base')  { cfg.sensor_base  = this._extractBase(val, false); }
-    else if (key === 'binary_base') { cfg.binary_base = this._extractBase(val, true); }
-    else { cfg[key] = val; }
-
-    this._config = cfg;
-    this._fire(cfg);
-  }
-
-  _extractBase(entityId, isBinary) {
-    if (!entityId) return '';
-    const withoutDomain = entityId.replace(/^(sensor|binary_sensor)\./, '');
-    // These suffix patterns are used ONLY for auto-detecting the entity base prefix
-    // when the user selects an entity in the editor. They cover common NAS and switch
-    // integration naming conventions. They are never exposed to end users.
-    const suffixes = [
-      // Common NAS integration suffixes (various languages/integrations)
-      '_drive_\\d+_stato_intelligente', '_drive_\\d+_stato',
-      '_drive_\\d+_temperatura', '_drive_\\d+_superato_il_numero_massimo_di_settori_danneggiati',
-      '_drive_\\d+_al_di_sotto_della_vita_residua_minima',
-      '_volume_\\d+_stato', '_volume_\\d+_dimensione_totale',
-      '_volume_\\d+_spazio_utilizzato', '_volume_\\d+_volume_utilizzato',
-      '_volume_\\d+_temperatura_media_del_disco', '_volume_\\d+_temperatura_massima_del_disco',
-      '_utilizzo_della_cpu_totale', '_utilizzo_della_cpu_utente',
-      '_utilizzo_della_cpu_sistema', '_utilizzo_della_cpu_altro',
-      '_carico_medio_della_cpu_1_min', '_carico_medio_della_cpu_5_min',
-      '_carico_medio_della_cpu_15_min', '_utilizzo_della_memoria_reale',
-      '_memoria_disponibile_reale', '_memoria_disponibile_scambio',
-      '_memoria_in_cache', '_velocita_di_caricamento', '_velocita_di_scaricamento',
-      '_temperatura', '_ultimo_avvio', '_stato_di_sicurezza',
-      // English NAS suffix variants
-      '_drive_\\d+_smart_status', '_drive_\\d+_temperature',
-      '_drive_\\d+_bad_sectors_exceeded', '_drive_\\d+_below_min_remaining_life',
-      '_volume_\\d+_status', '_volume_\\d+_total_size', '_volume_\\d+_used_space',
-      '_temperature', '_last_boot', '_system_safety',
-      '_cpu_usage', '_memory_usage', '_network_upload', '_network_download',
-      // Common switch integration suffixes
-      '_port_\\d+_status', '_port_\\d+_link_speed', '_port_\\d+_traffic_received',
-      '_port_\\d+_traffic_sent', '_port_\\d+_io', '_port_\\d+_receiving',
-      '_port_\\d+_sending', '_port_\\d+_total_received', '_port_\\d+_total_sent',
-      '_ip_address', '_switch_name', '_switch_bootlader', '_switch_firmware',
-      '_switch_serial_number', '_response_time_seconds',
-      '_switch_io', '_switch_traffic_received', '_switch_traffic_sent',
-    ];
-    for (const suf of suffixes) {
-      const m = withoutDomain.match(new RegExp('^(.+?)' + suf + '$'));
-      if (m) return `${isBinary ? 'binary_sensor' : 'sensor'}.${m[1]}`;
-    }
-    return entityId;
-  }
 
   _inputChange(e) {
     const key = e.target.dataset.key;
