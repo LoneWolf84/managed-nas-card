@@ -176,24 +176,45 @@ class ManagedNasCard extends HTMLElement {
     return `${minutes} minut${minutes === 1 ? 'o' : 'i'}`;
   }
 
+  // ── Entity resolution helpers ─────────────────────────────────────────────
+  // Returns override entity if configured, else builds from base+suffix.
+  // {N} in suffix is replaced with n (bay/port number).
+  _ent(base, suffix, n) {
+    const s = n !== undefined ? suffix.replace('{N}', n) : suffix;
+    return base + s;
+  }
+  _entOr(overrideKey, base, suffix, n) {
+    // Check per-bay/per-port override first, then fall back to base+suffix
+    const ov = this._config[overrideKey];
+    if (ov) return ov;
+    if (!base) return null; // no base configured and no override → entity unknown
+    return this._ent(base, suffix, n);
+  }
+
   // ── _render ───────────────────────────────────────────────────────────────
   _render(hass) {
     const cfg      = this._config;
-    const base     = cfg.sensor_base;
-    const bin      = cfg.binary_base;
+    const base     = cfg.sensor_base  || '';
+    const bin      = cfg.binary_base  || '';
     const selected = this._selectedLocal;
     const st       = hass.states;
 
-    // ── System readings ───────────────────────────────────────────────────
-    const nasTemp = st[base + cfg.suffix_temp]?.state   || '--';
-    const uptime  = this._formatUptime(st[base + cfg.suffix_uptime]?.state);
+    // ── System readings — override wins, then base+suffix, then blank ─────
+    const tempSysEnt   = cfg.override_temp_sys || (base ? base + cfg.suffix_temp : null);
+    const uptimeEnt    = cfg.override_uptime   || (base ? base + cfg.suffix_uptime : null);
+    const safetyEnt    = cfg.override_safety   || (bin  ? bin  + cfg.suffix_safety : null);
 
-    // ── Alert scan ────────────────────────────────────────────────────────
+    const nasTemp = (tempSysEnt ? st[tempSysEnt]?.state : null)  || '--';
+    const uptime  = this._formatUptime(uptimeEnt ? st[uptimeEnt]?.state : null);
+
+    // ── Alert scan — per-bay override or base+suffix ──────────────────────
     let hasBadSectors = false;
     let hasLowLife    = false;
     for (let i = 1; i <= cfg.bays; i++) {
-      if (st[bin + cfg.suffix_bad_sectors.replace('{N}', i)]?.state === 'on') hasBadSectors = true;
-      if (st[bin + cfg.suffix_low_life.replace('{N}',   i)]?.state === 'on') hasLowLife    = true;
+      const badEnt  = cfg[`override_bad_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_bad_sectors, i) : null);
+      const lifeEnt = cfg[`override_life_${i}`] || (bin  ? this._ent(bin,  cfg.suffix_low_life, i)    : null);
+      if (badEnt  && st[badEnt]?.state  === 'on') hasBadSectors = true;
+      if (lifeEnt && st[lifeEnt]?.state === 'on') hasLowLife    = true;
     }
 
     // Alert color — original exact logic
@@ -203,24 +224,20 @@ class ManagedNasCard extends HTMLElement {
     else if (hasLowLife) { alertColor = cfg.color_led_warn;  alertBlink = true; }
 
     // ── USB detection ─────────────────────────────────────────────────────
-    const allEntities = Object.keys(st);
-    const usbPrefix   = cfg.usb_prefix;
-    const usbConnected = usbPrefix
-      ? allEntities.some(id => id.startsWith(usbPrefix))
-      : false;
-    const usbWarning = usbPrefix
+    const allEntities  = Object.keys(st);
+    const usbPrefix    = cfg.usb_prefix;
+    const usbConnected = usbPrefix ? allEntities.some(id => id.startsWith(usbPrefix)) : false;
+    const usbWarning   = usbPrefix
       ? allEntities.some(id =>
-          id.startsWith(usbPrefix) &&
-          id.endsWith('_status') &&
+          id.startsWith(usbPrefix) && id.endsWith('_status') &&
           !cfg.usb_safe_states.includes(st[id]?.state))
       : false;
 
     // ── Safety / Status ───────────────────────────────────────────────────
-    const isUnsafe    = st[bin + cfg.suffix_safety]?.state === 'on';
+    const isUnsafe    = safetyEnt ? st[safetyEnt]?.state === 'on' : false;
     const statusColor = isUnsafe ? cfg.color_status_warn : cfg.color_status_ok;
 
     // ── Bay grid columns ──────────────────────────────────────────────────
-    // 'auto' → ceil(bays/2)
     const cols = cfg.grid_cols === 'auto' || cfg.grid_cols === 0
       ? Math.ceil(cfg.bays / 2)
       : parseInt(cfg.grid_cols, 10) || Math.ceil(cfg.bays / 2);
@@ -228,22 +245,24 @@ class ManagedNasCard extends HTMLElement {
     // ── Bay HTML ──────────────────────────────────────────────────────────
     let baysHtml = '';
     for (let i = 1; i <= cfg.bays; i++) {
-      const smartStatus = st[base + cfg.suffix_smart.replace('{N}', i)]?.state;
+      // Override entity wins; fall back to base+suffix if base is set
+      const smartEnt = cfg[`override_smart_${i}`] || (base ? this._ent(base, cfg.suffix_smart, i) : null);
+      const lifeEnt  = cfg[`override_life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
+
+      const smartStatus = smartEnt ? st[smartEnt]?.state : undefined;
       const isSelected  = selected === cfg.bay_option_prefix + i;
 
       // LED color — original exact logic
       let ledColor = cfg.color_led_off;
       if (smartStatus && !['unavailable', 'unknown'].includes(smartStatus)) {
         if (cfg.smart_ok.includes(smartStatus)) {
-          const lowLife = st[bin + cfg.suffix_low_life.replace('{N}', i)]?.state === 'on';
+          const lowLife = lifeEnt ? st[lifeEnt]?.state === 'on' : false;
           ledColor = lowLife ? cfg.color_led_warn : cfg.color_led_ok;
         } else {
           ledColor = cfg.color_led_error;
         }
       }
 
-      // Shadow — original: only when ledColor !== '#333' (the hardcoded off color)
-      // We generalise: only when ledColor !== cfg.color_led_off
       const ledShadow = ledColor !== cfg.color_led_off ? `0 0 5px ${ledColor}` : 'none';
 
       baysHtml += `
@@ -559,36 +578,48 @@ class ManagedNasCardEditor extends HTMLElement {
       ])}
       ${this._input('Etichetta bay', 'bay_label', 'text', 'es. BAY · SLOT · DRIVE')}
 
+      <h4>Input select bay</h4>
+      <p style="font-size:11px;color:#888;margin:0 0 10px">
+        Deve corrispondere esattamente alle opzioni del tuo input_select in HA.<br>
+        Prefisso opzione: es. <b>Baia </b> → genera "Baia 1", "Baia 2" (includi lo spazio finale).<br>
+        Valore nessuna: es. <b>Nessuna</b> → valore quando nessuna bay è selezionata.
+      </p>
+      ${this._input('Prefisso opzione bay', 'bay_option_prefix', 'text', 'es. Baia  (con spazio finale)')}
+      ${this._input('Valore nessuna selezione', 'input_select_none', 'text', 'es. Nessuna')}
+
       <div class="nav">
-        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(2)">Avanti → Sensori bay</button>
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(2)">Avanti → Sensori bay →</button>
       </div>
     </div>`;
   }
 
   // ── STEP 2: Sensori bay ───────────────────────────────────────────────────
   _renderStep2() {
-    const bays = parseInt(this._config.bays, 10) || 8;
+    const bays = parseInt(this._config.bays, 10) || 1;
 
     const bayPickersHtml = Array.from({length: bays}, (_, i) => i + 1).map(n => `
       <details>
-        <summary>Bay ${n}</summary>
-        ${this._picker(`SMART status bay ${n}`, `override_smart_${n}`, 'sensor',
-            `Default: {sensor_base} + suffix_smart (configured below)`)}
-        ${this._picker(`Settori danneggiati bay ${n}`, `override_bad_${n}`, 'binary_sensor',
-            `Default: {binary_base} + suffix_bad_sectors`)}
-        ${this._picker(`Vita residua bassa bay ${n}`, `override_life_${n}`, 'binary_sensor',
-            `Default: {binary_base} + suffix_low_life`)}
-        ${this._picker(`Temperatura bay ${n}`, `override_temp_${n}`, 'sensor',
-            `Default: {sensor_base} + suffix_temp`)}
+        <summary>${this._config.bay_label || 'BAY'} ${n}</summary>
+        ${this._picker(`SMART status bay ${n}`, `override_smart_${n}`, 'sensor')}
+        ${this._picker(`Settori danneggiati bay ${n}`, `override_bad_${n}`, 'binary_sensor')}
+        ${this._picker(`Vita residua bassa bay ${n}`, `override_life_${n}`, 'binary_sensor')}
+        ${this._picker(`Temperatura bay ${n}`, `override_temp_${n}`, 'sensor')}
       </details>`).join('');
 
     return `${this._css()}<div style="padding:16px">
       ${this._stepBar()}
 
-      <h4 class="first">Entità base (obbligatorie)</h4>
-      <p class="hint">Inserisci il prefisso comune di tutte le entità del tuo NAS, es. <code>sensor.mynas</code> → genera <code>sensor.mynas_temperatura</code>, <code>sensor.mynas_drive_1_temperatura</code>, ecc.</p>
-      ${this._input('Sensor base', 'sensor_base', 'text', 'es. sensor.mynas')}
-      ${this._input('Binary sensor base', 'binary_base', 'text', 'es. binary_sensor.mynas')}
+      <h4 class="first">Sensori per bay</h4>
+      <p class="hint">
+        Seleziona le entità per ogni bay. Se configuri i <b>sensori base</b> nel passo successivo
+        puoi lasciare vuoto ciò che segue il pattern automatico.
+      </p>
+      ${bayPickersHtml}
+
+      <h4>Sensori sistema</h4>
+      ${this._picker('Temperatura NAS', 'override_temp_sys', 'sensor')}
+      ${this._picker('Ultimo avvio (timestamp ISO)', 'override_uptime', 'sensor')}
+      ${this._picker('Stato sicurezza (binary)', 'override_safety', 'binary_sensor')}
 
       <h4>Azioni</h4>
       ${this._picker('Input select selezione bay', 'input_select', 'input_select')}
@@ -596,35 +627,43 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._picker('Pulsante shutdown', 'shutdown_button', 'button')}
 
       <h4>USB</h4>
-      <p class="hint">Lascia vuoto per nascondere il widget USB.</p>
       ${this._input('Prefisso entità USB', 'usb_prefix', 'text',
-          'prefisso comune entità USB — rileva tutto ciò che inizia con questo')}
-
-      <h4>Override per bay (opzionale)</h4>
-      <p class="hint">Lascia vuoto per usare i suffissi automatici <code>{base}_drive_{N}_...</code></p>
-      ${bayPickersHtml}
+          'es. sensor.mynas_usb_disk — lascia vuoto per nascondere il widget')}
 
       <div class="nav">
         <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(1)">← Struttura</button>
-        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">Avanti → Sistema</button>
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">→ Base & Opzioni</button>
       </div>
     </div>`;
   }
 
-  // ── STEP 3: Sistema & Opzioni ─────────────────────────────────────────────
+  // ── STEP 3: Sensori base & Opzioni ────────────────────────────────────────
   _renderStep3() {
     return `${this._css()}<div style="padding:16px">
       ${this._stepBar()}
 
-      <h4 class="first">Sensori sistema</h4>
-      <p class="hint">Usati per temperatura e uptime nell'header. Lascia vuoto per usare i suffissi.</p>
-      ${this._picker('Temperatura NAS', 'override_temp_sys', 'sensor')}
-      ${this._picker('Ultimo avvio (timestamp ISO)', 'override_uptime', 'sensor')}
-      ${this._picker('Stato sicurezza (binary)', 'override_safety', 'binary_sensor')}
+      <h4 class="first">Sensori base (opzionale)</h4>
+      <p class="hint">
+        Se tutti i tuoi sensori seguono un pattern comune, inserisci il prefisso e configura
+        i suffissi sotto. Lascia vuoto se hai già configurato ogni bay singolarmente nello step 2.
+      </p>
+      ${this._input('Sensor base', 'sensor_base', 'text', 'es. sensor.mynas')}
+      ${this._input('Binary sensor base', 'binary_base', 'text', 'es. binary_sensor.mynas')}
+
+      <details open>
+        <summary>⚙ Suffissi entità</summary>
+        ${this._input('SMART status ({N})',        'suffix_smart')}
+        ${this._input('Settori danneggiati ({N})', 'suffix_bad_sectors')}
+        ${this._input('Vita residua bassa ({N})',  'suffix_low_life')}
+        ${this._input('Temperatura bay ({N})',     'suffix_temp')}
+        ${this._input('Temperatura NAS sistema',  'suffix_temp_sys',  'text', 'es. _temperatura')}
+        ${this._input('Ultimo avvio',             'suffix_uptime')}
+        ${this._input('Stato sicurezza',          'suffix_safety')}
+      </details>
 
       <h4>Valori SMART OK</h4>
-      ${this._input('Valori OK (separati da virgola)', 'smart_ok_raw', 'text',
-          'e.g. normal,Good — healthy SMART status values for your integration')}
+      ${this._input('Valori OK (virgola)', 'smart_ok_raw', 'text',
+          'es. normal,Ottimo,Good — stati SMART considerati sani')}
 
       <h4>Funzionalità</h4>
       ${this._toggle('Pulsante reboot',   'show_reboot')}
@@ -635,43 +674,31 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._toggle('Temperatura',       'show_temp')}
       ${this._toggle('Uptime',            'show_uptime')}
 
-      <h4>Colori</h4>
-      <div class="color-grid">
-        ${this._color('Sfondo card',     'color_bg')}
-        ${this._color('Bordo card',      'color_border')}
-        ${this._color('Testo',           'color_text')}
-        ${this._color('Accento',         'color_accent')}
-        ${this._color('Info subtitle',   'color_info')}
-        ${this._color('Sfondo bay',      'color_bay_bg')}
-        ${this._color('Bordo bay',       'color_bay_border')}
-        ${this._color('Etichetta bay',   'color_bay_sub')}
-        ${this._color('LED spento',      'color_led_off')}
-        ${this._color('LED OK',          'color_led_ok')}
-        ${this._color('LED warning',     'color_led_warn')}
-        ${this._color('LED errore',      'color_led_error')}
-      </div>
-
-      <details>
-        <summary>⚙ Suffissi entità avanzati</summary>
-        ${this._input('SMART status ({N})',          'suffix_smart')}
-        ${this._input('Settori danneggiati ({N})',   'suffix_bad_sectors')}
-        ${this._input('Vita residua bassa ({N})',    'suffix_low_life')}
-        ${this._input('Temperatura ({N})',           'suffix_temp')}
-        ${this._input('Ultimo avvio',               'suffix_uptime')}
-        ${this._input('Stato sicurezza',            'suffix_safety')}
-      </details>
-
       <details>
         <summary>⚙ Testi personalizzati</summary>
-        ${this._input('Etichetta Temp',    'label_temp')}
-        ${this._input('Etichetta Avvio',   'label_uptime')}
-        ${this._input('Etichetta STATUS',  'label_status')}
-        ${this._input('Etichetta ALERT',   'label_alert')}
-        ${this._input('Prefisso opzione bay', 'bay_option_prefix', 'text', 'match your input_select option values — e.g. "Bay 1", "Slot 1"')}
-        ${this._input('Valore nessuna',    'input_select_none')}
-        ${this._input('Conferma reboot',   'label_confirm_reboot')}
-        ${this._input('Conferma shutdown', 'label_confirm_shutdown')}
+        ${this._input('Etichetta Temp',       'label_temp')}
+        ${this._input('Etichetta Avvio',      'label_uptime')}
+        ${this._input('Etichetta STATUS',     'label_status')}
+        ${this._input('Etichetta ALERT',      'label_alert')}
+        ${this._input('Conferma reboot',      'label_confirm_reboot')}
+        ${this._input('Conferma shutdown',    'label_confirm_shutdown')}
       </details>
+
+      <h4>Colori</h4>
+      <div class="color-grid">
+        ${this._color('Sfondo card',   'color_bg')}
+        ${this._color('Bordo card',    'color_border')}
+        ${this._color('Testo',         'color_text')}
+        ${this._color('Accento',       'color_accent')}
+        ${this._color('Info subtitle', 'color_info')}
+        ${this._color('Sfondo bay',    'color_bay_bg')}
+        ${this._color('Bordo bay',     'color_bay_border')}
+        ${this._color('Etichetta bay', 'color_bay_sub')}
+        ${this._color('LED spento',    'color_led_off')}
+        ${this._color('LED OK',        'color_led_ok')}
+        ${this._color('LED warning',   'color_led_warn')}
+        ${this._color('LED errore',    'color_led_error')}
+      </div>
 
       <div class="nav">
         <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(2)">← Sensori bay</button>
