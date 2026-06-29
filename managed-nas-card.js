@@ -199,20 +199,20 @@ class ManagedNasCard extends HTMLElement {
     const selected = this._selectedLocal;
     const st       = hass.states;
 
-    // ── System readings — override wins, then base+suffix, then blank ─────
-    const tempSysEnt   = cfg.override_temp_sys || (base ? base + cfg.suffix_temp : null);
-    const uptimeEnt    = cfg.override_uptime   || (base ? base + cfg.suffix_uptime : null);
-    const safetyEnt    = cfg.override_safety   || (bin  ? bin  + cfg.suffix_safety : null);
+    // ── System readings — per-entity picker wins, then base+suffix, then blank
+    const tempSysEnt = cfg.temp_sys || (base ? base + (cfg.suffix_temp_sys || cfg.suffix_temp) : null);
+    const uptimeEnt  = cfg.uptime   || (base ? base + cfg.suffix_uptime : null);
+    const safetyEnt  = cfg.safety   || (bin  ? bin  + cfg.suffix_safety  : null);
 
-    const nasTemp = (tempSysEnt ? st[tempSysEnt]?.state : null)  || '--';
+    const nasTemp = (tempSysEnt ? st[tempSysEnt]?.state : null) || '--';
     const uptime  = this._formatUptime(uptimeEnt ? st[uptimeEnt]?.state : null);
 
-    // ── Alert scan — per-bay override or base+suffix ──────────────────────
+    // ── Alert scan — per-bay picker (bad_N, life_N) or base+suffix ────────
     let hasBadSectors = false;
     let hasLowLife    = false;
     for (let i = 1; i <= cfg.bays; i++) {
-      const badEnt  = cfg[`override_bad_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_bad_sectors, i) : null);
-      const lifeEnt = cfg[`override_life_${i}`] || (bin  ? this._ent(bin,  cfg.suffix_low_life, i)    : null);
+      const badEnt  = cfg[`bad_${i}`]  || (bin ? this._ent(bin, cfg.suffix_bad_sectors, i) : null);
+      const lifeEnt = cfg[`life_${i}`] || (bin ? this._ent(bin, cfg.suffix_low_life, i)    : null);
       if (badEnt  && st[badEnt]?.state  === 'on') hasBadSectors = true;
       if (lifeEnt && st[lifeEnt]?.state === 'on') hasLowLife    = true;
     }
@@ -223,15 +223,21 @@ class ManagedNasCard extends HTMLElement {
     if (hasBadSectors)   { alertColor = cfg.color_led_error; alertBlink = true; }
     else if (hasLowLife) { alertColor = cfg.color_led_warn;  alertBlink = true; }
 
-    // ── USB detection ─────────────────────────────────────────────────────
-    const allEntities  = Object.keys(st);
-    const usbPrefix    = cfg.usb_prefix;
-    const usbConnected = usbPrefix ? allEntities.some(id => id.startsWith(usbPrefix)) : false;
-    const usbWarning   = usbPrefix
-      ? allEntities.some(id =>
+    // ── USB detection — individual entities (usb_entity_N) or legacy prefix ─
+    const usbCount    = parseInt(cfg.usb_sensor_count, 10) || 0;
+    const usbEntities = Array.from({length: usbCount}, (_, i) =>
+      cfg[`usb_entity_${i+1}`]).filter(Boolean);
+    const usbPrefix   = cfg.usb_prefix || '';
+    const allEntities = Object.keys(st);
+
+    const usbConnectedFinal = usbEntities.length > 0
+      ? usbEntities.some(id => st[id])
+      : (usbPrefix ? allEntities.some(id => id.startsWith(usbPrefix)) : false);
+    const usbWarningFinal = usbEntities.length > 0
+      ? usbEntities.some(id => st[id] && !cfg.usb_safe_states.includes(st[id]?.state))
+      : (usbPrefix ? allEntities.some(id =>
           id.startsWith(usbPrefix) && id.endsWith('_status') &&
-          !cfg.usb_safe_states.includes(st[id]?.state))
-      : false;
+          !cfg.usb_safe_states.includes(st[id]?.state)) : false);
 
     // ── Safety / Status ───────────────────────────────────────────────────
     const isUnsafe    = safetyEnt ? st[safetyEnt]?.state === 'on' : false;
@@ -246,8 +252,8 @@ class ManagedNasCard extends HTMLElement {
     let baysHtml = '';
     for (let i = 1; i <= cfg.bays; i++) {
       // Override entity wins; fall back to base+suffix if base is set
-      const smartEnt = cfg[`override_smart_${i}`] || (base ? this._ent(base, cfg.suffix_smart, i) : null);
-      const lifeEnt  = cfg[`override_life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
+      const smartEnt = cfg[`smart_${i}`] || (base ? this._ent(base, cfg.suffix_smart, i) : null);
+      const lifeEnt  = cfg[`life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
 
       const smartStatus = smartEnt ? st[smartEnt]?.state : undefined;
       const isSelected  = selected === cfg.bay_option_prefix + i;
@@ -276,12 +282,13 @@ class ManagedNasCard extends HTMLElement {
     }
 
     // ── USB widget ────────────────────────────────────────────────────────
-    const usbHtml = (cfg.show_usb && usbPrefix) ? `
+    const hasUsb = usbEntities.length > 0 || !!usbPrefix;
+    const usbHtml = (cfg.show_usb && hasUsb) ? `
       <div class="usb-container selectable-item" data-value="USB">
-        <ha-icon class="usb-icon${usbWarning ? ' blink' : ''}" icon="mdi:harddisk"
+        <ha-icon class="usb-icon${usbWarningFinal ? ' blink' : ''}" icon="mdi:harddisk"
                  style="color:${selected === 'USB'
                    ? cfg.color_accent
-                   : (usbConnected ? (usbWarning ? cfg.color_led_warn : cfg.color_led_ok) : cfg.color_led_off)};"></ha-icon>
+                   : (usbConnectedFinal ? (usbWarningFinal ? cfg.color_led_warn : cfg.color_led_ok) : cfg.color_led_off)};"></ha-icon>
       </div>` : '';
 
     // ── Status / Alert dots ───────────────────────────────────────────────
@@ -341,7 +348,7 @@ class ManagedNasCard extends HTMLElement {
         .led-group.selected { color:${cfg.color_accent}; }
         .dot { width:7px; height:7px; border-radius:50%; margin-bottom:3px; }
         .usb-icon { --mdc-icon-size:22px; }
-        ${(cfg.show_usb && cfg.usb_prefix) ? '.usb-container { cursor:pointer; }' : ''}
+        ${(cfg.show_usb && (usbEntities.length > 0 || cfg.usb_prefix)) ? '.usb-container { cursor:pointer; }' : ''}
         .blink { animation:blinker 1.5s linear infinite; }
         @keyframes blinker { 50% { opacity:0.2; } }
         .drive-grid { display:grid; grid-template-columns:repeat(${cols},minmax(0,1fr)); gap:10px 8px; }
@@ -595,44 +602,79 @@ class ManagedNasCardEditor extends HTMLElement {
 
   // ── STEP 2: Sensori bay ───────────────────────────────────────────────────
   _renderStep2() {
-    const bays = parseInt(this._config.bays, 10) || 1;
+    const c    = this._config;
+    const bays = parseInt(c.bays, 10) || 1;
+    const lbl  = c.bay_label || 'BAY';
 
+    // Bay pickers — one collapsible section per bay
     const bayPickersHtml = Array.from({length: bays}, (_, i) => i + 1).map(n => `
       <details>
-        <summary>${this._config.bay_label || 'BAY'} ${n}</summary>
-        ${this._picker(`SMART status bay ${n}`, `override_smart_${n}`, 'sensor')}
-        ${this._picker(`Settori danneggiati bay ${n}`, `override_bad_${n}`, 'binary_sensor')}
-        ${this._picker(`Vita residua bassa bay ${n}`, `override_life_${n}`, 'binary_sensor')}
-        ${this._picker(`Temperatura bay ${n}`, `override_temp_${n}`, 'sensor')}
+        <summary>${lbl} ${n}</summary>
+        ${this._picker(`SMART status`, `smart_${n}`, 'sensor',
+            'Stato intelligente del disco — es. normal, attention')}
+        ${this._picker(`Settori danneggiati`, `bad_${n}`, 'binary_sensor',
+            'Binary: on = settori danneggiati rilevati')}
+        ${this._picker(`Vita residua bassa`, `life_${n}`, 'binary_sensor',
+            'Binary: on = vita residua sotto soglia minima')}
+        ${this._picker(`Temperatura`, `temp_${n}`, 'sensor',
+            'Temperatura del disco in °C')}
       </details>`).join('');
+
+    // USB — numero dinamico di sensori
+    const usbCount = parseInt(c.usb_sensor_count, 10) || 0;
+    const usbPickersHtml = usbCount > 0
+      ? Array.from({length: usbCount}, (_, i) => i + 1).map(n => `
+          ${this._picker(`Sensore USB ${n}`, `usb_entity_${n}`, 'sensor',
+              'es. sensor.mynas_usb_disk_1_status')}`).join('')
+      : `<p style="font-size:11px;color:#555;margin:4px 0">
+           Imposta il numero di sensori USB sopra per aggiungere i picker.
+         </p>`;
 
     return `${this._css()}<div style="padding:16px">
       ${this._stepBar()}
 
-      <h4 class="first">Sensori per bay</h4>
+      <h4 class="first">Sensori per ogni bay</h4>
       <p class="hint">
-        Seleziona le entità per ogni bay. Se configuri i <b>sensori base</b> nel passo successivo
-        puoi lasciare vuoto ciò che segue il pattern automatico.
+        Seleziona i sensori di ogni bay. Se usi i <b>sensori base</b> (step successivo)
+        puoi lasciare vuoto quello che segue il pattern automatico.
       </p>
       ${bayPickersHtml}
 
-      <h4>Sensori sistema</h4>
-      ${this._picker('Temperatura NAS', 'override_temp_sys', 'sensor')}
-      ${this._picker('Ultimo avvio (timestamp ISO)', 'override_uptime', 'sensor')}
-      ${this._picker('Stato sicurezza (binary)', 'override_safety', 'binary_sensor')}
+      <h4>Sensori sistema NAS</h4>
+      ${this._picker('Temperatura NAS', 'temp_sys', 'sensor',
+          'Temperatura generale del NAS')}
+      ${this._picker('Ultimo avvio', 'uptime', 'sensor',
+          "Timestamp ISO dell'ultimo avvio — usato per calcolare l'uptime")}
+      ${this._picker('Stato sicurezza', 'safety', 'binary_sensor',
+          'Binary: on = sistema in stato non sicuro')}
+
+      <h4>Disco esterno USB</h4>
+      <p class="hint">
+        Hai un disco esterno collegato via USB? Inserisci quanti sensori espone il tuo NAS
+        per quel dispositivo, poi seleziona ogni entità.
+      </p>
+      ${this._input('Numero sensori USB (0 = nessuno)', 'usb_sensor_count', 'number')}
+      ${usbPickersHtml}
 
       <h4>Azioni</h4>
       ${this._picker('Input select selezione bay', 'input_select', 'input_select')}
       ${this._picker('Pulsante reboot', 'reboot_button', 'button')}
       ${this._picker('Pulsante shutdown', 'shutdown_button', 'button')}
 
-      <h4>USB</h4>
-      ${this._input('Prefisso entità USB', 'usb_prefix', 'text',
-          'es. sensor.mynas_usb_disk — lascia vuoto per nascondere il widget')}
+      <h4>Sensori base (opzionale)</h4>
+      <p class="hint">
+        Se tutti i tuoi sensori seguono un pattern comune, inserisci il prefisso qui
+        e la card li configurerà in automatico. Lascia vuoto se hai già selezionato
+        tutto manualmente sopra.
+      </p>
+      ${this._input('Prefisso sensori (sensor base)', 'sensor_base', 'text',
+          'es. sensor.mynas → genera sensor.mynas_temperatura, sensor.mynas_drive_1_temperatura...')}
+      ${this._input('Prefisso binary sensori (binary base)', 'binary_base', 'text',
+          'es. binary_sensor.mynas')}
 
       <div class="nav">
         <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(1)">← Struttura</button>
-        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">→ Base & Opzioni</button>
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">→ Suffissi & Opzioni</button>
       </div>
     </div>`;
   }
@@ -725,7 +767,13 @@ class ManagedNasCardEditor extends HTMLElement {
     const val = e.target.value;
     const cfg = { ...this._config };
 
-    if (key === 'bays') { cfg.bays = parseInt(val,10)||8; this._config=cfg; this._fire(cfg); return; }
+    if (key === 'bays') { cfg.bays = parseInt(val,10)||1; this._config=cfg; this._fire(cfg); return; }
+    if (key === 'usb_sensor_count') {
+      cfg.usb_sensor_count = parseInt(val,10)||0;
+      this._config=cfg; this._fire(cfg);
+      // Re-render step to show/hide USB pickers dynamically
+      this._render(); return;
+    }
     if (key === 'smart_ok_raw') {
       cfg.smart_ok = val.split(',').map(v=>v.trim()).filter(Boolean);
       this._config=cfg; this._fire(cfg); return;
