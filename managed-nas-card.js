@@ -19,8 +19,8 @@ const NAS_DEFAULTS = {
   model: '',              // shown as "Modello: X" — leave empty to hide
 
   // ── Entity bases — always empty; user fills via editor ───────────────────
-  sensor_base: '',        // REQUIRED — set via editor
-  binary_base: '',        // REQUIRED — set via editor
+  sensor_base: '',        // optional — set via editor or per-entity pickers
+  binary_base: '',        // optional — set via editor or per-entity pickers
 
   // ── Bay configuration ─────────────────────────────────────────────────────
   bays:      1,           // blank canvas default; user sets actual bay count
@@ -94,8 +94,6 @@ const NAS_DEFAULTS = {
 class ManagedNasCard extends HTMLElement {
 
   setConfig(config) {
-    if (!config.sensor_base) throw new Error('managed-nas-card: "sensor_base" è obbligatorio.');
-    if (!config.binary_base) throw new Error('managed-nas-card: "binary_base" è obbligatorio.');
     this._config = { ...NAS_DEFAULTS, ...config };
     this._config.bays = parseInt(this._config.bays, 10) || 8;
   }
@@ -417,7 +415,7 @@ class ManagedNasCardEditor extends HTMLElement {
 
   setConfig(config) {
     this._config = { ...NAS_DEFAULTS, ...config };
-    if (this._config.sensor_base && this._step === 1) this._step = 2;
+    if ((this._config.bays > 1 || Object.keys(config).length > 2) && this._step === 1) this._step = 2;
     this._render();
   }
 
@@ -484,7 +482,7 @@ class ManagedNasCardEditor extends HTMLElement {
 
   _stepBar() {
     const c = this._config;
-    const done1 = !!(c.sensor_base && c.binary_base);
+    const done1 = !!(c.bays > 0 || c.bay_label);
     const labels = ['1 · Struttura', '2 · Sensori bay', '3 · Sistema & Opzioni'];
     return `<div class="steps">` + labels.map((l, i) => {
       const n = i + 1;
@@ -751,10 +749,26 @@ class ManagedNasCardEditor extends HTMLElement {
   // ── Main render ───────────────────────────────────────────────────────────
   _render() {
     if (!this.shadowRoot) return;
+    // Save which <details> are currently open (by their summary text)
+    const openSummaries = new Set();
+    this.shadowRoot.querySelectorAll('details[open] > summary').forEach(s => {
+      openSummaries.add(s.textContent.trim());
+    });
+
     this.shadowRoot.innerHTML =
       this._step === 1 ? this._renderStep1() :
       this._step === 2 ? this._renderStep2() :
                          this._renderStep3();
+
+    // Restore open state
+    if (openSummaries.size > 0) {
+      this.shadowRoot.querySelectorAll('details > summary').forEach(s => {
+        if (openSummaries.has(s.textContent.trim())) {
+          s.parentElement.setAttribute('open', '');
+        }
+      });
+    }
+
     requestAnimationFrame(() => this._attachPickers());
   }
 
