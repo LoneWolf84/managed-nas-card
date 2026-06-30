@@ -61,6 +61,7 @@ const NAS_DEFAULTS = {
   show_alert:    true,
   show_temp:     true,
   show_uptime:   true,
+  show_tooltip:  true,
 
   // ── Colors ────────────────────────────────────────────────────────────────
   color_bg:          '#1c1c1c',
@@ -252,15 +253,19 @@ class ManagedNasCard extends HTMLElement {
       // Override entity wins; fall back to base+suffix if base is set
       const smartEnt = cfg[`smart_${i}`] || (base ? this._ent(base, cfg.suffix_smart, i) : null);
       const lifeEnt  = cfg[`life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
+      const badEnt   = cfg[`bad_${i}`]   || (bin  ? this._ent(bin,  cfg.suffix_bad_sectors, i) : null);
+      const tempEnt  = cfg[`temp_${i}`]  || (base ? this._ent(base, cfg.suffix_temp, i) : null);
 
       const smartStatus = smartEnt ? st[smartEnt]?.state : undefined;
-      const isSelected  = selected === cfg.bay_option_prefix + i;
+      const lowLife      = lifeEnt ? st[lifeEnt]?.state === 'on' : false;
+      const badSectors   = badEnt  ? st[badEnt]?.state  === 'on' : false;
+      const diskTemp     = tempEnt ? st[tempEnt]?.state : null;
+      const isSelected   = selected === cfg.bay_option_prefix + i;
 
       // LED color — original exact logic
       let ledColor = cfg.color_led_off;
       if (smartStatus && !['unavailable', 'unknown'].includes(smartStatus)) {
         if (cfg.smart_ok.includes(smartStatus)) {
-          const lowLife = lifeEnt ? st[lifeEnt]?.state === 'on' : false;
           ledColor = lowLife ? cfg.color_led_warn : cfg.color_led_ok;
         } else {
           ledColor = cfg.color_led_error;
@@ -269,8 +274,13 @@ class ManagedNasCard extends HTMLElement {
 
       const ledShadow = ledColor !== cfg.color_led_off ? `0 0 5px ${ledColor}` : 'none';
 
+      // Tooltip data: bay number, smart status, disk temp, bad sectors, low life
+      const tipData = cfg.show_tooltip
+        ? `data-tip="${i}|${smartStatus || ''}|${diskTemp || ''}|${badSectors}|${lowLife}"`
+        : '';
+
       baysHtml += `
-        <div class="selectable-item" data-value="${cfg.bay_option_prefix}${i}">
+        <div class="selectable-item" data-value="${cfg.bay_option_prefix}${i}" ${tipData}>
           <div class="bay-handle${isSelected ? ' selected' : ''}">
             <div class="bay-led" style="background:${ledColor}; box-shadow:${ledShadow}"></div>
             <div class="lock-icon"></div>
@@ -355,6 +365,20 @@ class ManagedNasCard extends HTMLElement {
         .bay-led { width:4px; height:18px; }
         .lock-icon { width:8px; height:8px; border-radius:50%; border:1px solid ${cfg.color_bay_border}; background:#111; }
         .bay-sub { font-size:11px; color:${cfg.color_bay_sub}; text-align:center; margin-top:6px; font-weight:bold; letter-spacing:0.5px; }
+
+        /* ── Bay hover tooltip ──────────────────────────────────────────── */
+        .nas-tip {
+          position: fixed; z-index: 9999;
+          background: #2a2a2a; border: 1px solid #444;
+          border-radius: 8px; padding: 10px 14px;
+          font-size: 12px; color: #fff; pointer-events: none;
+          min-width: 155px; box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+          line-height: 1.65; font-family: Arial, sans-serif;
+        }
+        .nas-tip .nt-title { font-weight: bold; font-size: 13px; color: ${cfg.color_accent}; margin-bottom: 5px; }
+        .nas-tip .nt-row { display: flex; justify-content: space-between; gap: 10px; }
+        .nas-tip .nt-lbl { color: #888; }
+        .nas-tip .nt-val { font-weight: bold; }
       </style>
 
       <div class="header">
@@ -386,6 +410,12 @@ class ManagedNasCard extends HTMLElement {
       };
     });
 
+    // Bay hover tooltip listeners (only elements with data-tip — i.e. bays)
+    this.content.querySelectorAll('[data-tip]').forEach(el => {
+      el.onmouseenter = (e) => this._onBayEnter(e, el);
+      el.onmouseleave = () => this._onBayLeave();
+    });
+
     const rebootEl = this.content.querySelector('#reboot-btn');
     if (rebootEl) rebootEl.onclick = (e) => {
       e.stopPropagation();
@@ -399,6 +429,55 @@ class ManagedNasCard extends HTMLElement {
       if (confirm(cfg.label_confirm_shutdown))
         this._hass.callService('button', 'press', { entity_id: cfg.shutdown_button });
     };
+  }
+
+  // ── Bay tooltip — hover shows temperature, SMART status, alerts ───────────
+  _onBayEnter(event, el) {
+    if (!this._config.show_tooltip) return;
+    const raw = el.getAttribute('data-tip');
+    if (!raw) return;
+    const [i, smartStatus, diskTemp, badSectors, lowLife] = raw.split('|');
+    const cfg = this._config;
+
+    const existing = this.content.querySelector('.nas-tip');
+    if (existing) existing.remove();
+
+    const smartHtml = smartStatus
+      ? (cfg.smart_ok.includes(smartStatus)
+          ? `<span style="color:${cfg.color_led_ok}">● ${smartStatus}</span>`
+          : `<span style="color:${cfg.color_led_error}">● ${smartStatus}</span>`)
+      : `<span style="color:#555">○ N/D</span>`;
+
+    const tempRow = diskTemp
+      ? `<div class="nt-row"><span class="nt-lbl">🌡 Temp</span><span class="nt-val">${diskTemp}°C</span></div>`
+      : '';
+    const badRow = badSectors === 'true'
+      ? `<div class="nt-row"><span class="nt-lbl">⚠ Settori</span><span class="nt-val" style="color:${cfg.color_led_error}">Danneggiati</span></div>`
+      : '';
+    const lifeRow = lowLife === 'true'
+      ? `<div class="nt-row"><span class="nt-lbl">⚠ Vita</span><span class="nt-val" style="color:${cfg.color_led_warn}">Residua bassa</span></div>`
+      : '';
+
+    const tip = document.createElement('div');
+    tip.className = 'nas-tip';
+    tip.innerHTML = `
+      <div class="nt-title">${cfg.bay_label} ${i}</div>
+      <div class="nt-row"><span class="nt-lbl">SMART</span><span class="nt-val">${smartHtml}</span></div>
+      ${tempRow}${badRow}${lifeRow}`;
+
+    this.content.appendChild(tip);
+
+    let x = event.clientX + 14;
+    let y = event.clientY + 14;
+    if (x + 175 > window.innerWidth)  x = event.clientX - 175;
+    if (y + 130 > window.innerHeight) y = event.clientY - 130;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+    this._tooltip = tip;
+  }
+
+  _onBayLeave() {
+    if (this._tooltip) { this._tooltip.remove(); this._tooltip = null; }
   }
 }
 
@@ -713,6 +792,7 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._toggle('Dot ALERT',         'show_alert')}
       ${this._toggle('Temperatura',       'show_temp')}
       ${this._toggle('Uptime',            'show_uptime')}
+      ${this._toggle('Tooltip hover bay',  'show_tooltip')}
 
       <details>
         <summary>⚙ Testi personalizzati</summary>
