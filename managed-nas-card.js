@@ -15,8 +15,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const NAS_DEFAULTS = {
   // ── Header ───────────────────────────────────────────────────────────────
-  title: 'NAS',
-  model: '',              // shown as "Modello: X" — leave empty to hide
+  title:    'NAS',
+  logo_url: '',            // optional image URL shown before the title, e.g. /local/logo.png
+  model:    '',            // shown as "Modello: X" — leave empty to hide
 
   // ── Entity bases — always empty; user fills via editor ───────────────────
   sensor_base: '',        // optional — set via editor or per-entity pickers
@@ -251,12 +252,14 @@ class ManagedNasCard extends HTMLElement {
     let baysHtml = '';
     for (let i = 1; i <= cfg.bays; i++) {
       // Override entity wins; fall back to base+suffix if base is set
-      const smartEnt = cfg[`smart_${i}`] || (base ? this._ent(base, cfg.suffix_smart, i) : null);
-      const lifeEnt  = cfg[`life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
-      const badEnt   = cfg[`bad_${i}`]   || (bin  ? this._ent(bin,  cfg.suffix_bad_sectors, i) : null);
-      const tempEnt  = cfg[`temp_${i}`]  || (base ? this._ent(base, cfg.suffix_temp, i) : null);
+      const smartEnt    = cfg[`smart_${i}`]    || (base ? this._ent(base, cfg.suffix_smart, i) : null);
+      const volStateEnt = cfg[`volstate_${i}`] || null; // no generic suffix — picker-only field
+      const lifeEnt      = cfg[`life_${i}`]  || (bin  ? this._ent(bin,  cfg.suffix_low_life, i) : null);
+      const badEnt       = cfg[`bad_${i}`]   || (bin  ? this._ent(bin,  cfg.suffix_bad_sectors, i) : null);
+      const tempEnt      = cfg[`temp_${i}`]  || (base ? this._ent(base, cfg.suffix_temp, i) : null);
 
-      const smartStatus = smartEnt ? st[smartEnt]?.state : undefined;
+      const smartStatus = smartEnt    ? st[smartEnt]?.state    : undefined;
+      const volState    = volStateEnt ? st[volStateEnt]?.state : null;
       const lowLife      = lifeEnt ? st[lifeEnt]?.state === 'on' : false;
       const badSectors   = badEnt  ? st[badEnt]?.state  === 'on' : false;
       const diskTemp     = tempEnt ? st[tempEnt]?.state : null;
@@ -274,9 +277,10 @@ class ManagedNasCard extends HTMLElement {
 
       const ledShadow = ledColor !== cfg.color_led_off ? `0 0 5px ${ledColor}` : 'none';
 
-      // Tooltip data: bay number, smart status, disk temp, bad sectors, low life
+      // Tooltip data: bay number, volume state (not SMART — that's already the LED color),
+      // disk temp, bad sectors, low life
       const tipData = cfg.show_tooltip
-        ? `data-tip="${i}|${smartStatus || ''}|${diskTemp || ''}|${badSectors}|${lowLife}"`
+        ? `data-tip="${i}|${volState || ''}|${diskTemp || ''}|${badSectors}|${lowLife}"`
         : '';
 
       baysHtml += `
@@ -343,6 +347,8 @@ class ManagedNasCard extends HTMLElement {
         .header { display:flex; justify-content:space-between; margin-bottom:20px; align-items:center; }
         .brand { display:flex; align-items:center; gap:10px; }
         .logo-box { display:flex; flex-direction:column; }
+        .logo-row { display:flex; align-items:center; gap:8px; }
+        .brand-logo { height:22px; max-width:90px; width:auto; object-fit:contain; flex-shrink:0; display:block; }
         .logo { font-weight:800; font-size:20px; text-transform:uppercase; letter-spacing:1px; color:${cfg.color_text}; }
         .info-row { color:${cfg.color_info}; font-size:11px; font-weight:bold; opacity:0.9; line-height:1.2; margin-top:2px; }
         .sep { color:${cfg.color_sep}; margin:0 4px; }
@@ -384,7 +390,10 @@ class ManagedNasCard extends HTMLElement {
       <div class="header">
         <div class="brand">
           <div class="logo-box">
-            <span class="logo">${cfg.title}</span>
+            <div class="logo-row">
+              ${cfg.logo_url ? `<img class="brand-logo" src="${cfg.logo_url}" alt="" onerror="this.style.display='none'">` : ''}
+              <span class="logo">${cfg.title}</span>
+            </div>
             <div class="info-row">
               ${modelLine}
               ${infoLine}
@@ -431,21 +440,23 @@ class ManagedNasCard extends HTMLElement {
     };
   }
 
-  // ── Bay tooltip — hover shows temperature, SMART status, alerts ───────────
+  // ── Bay tooltip — hover shows volume state, temperature, alerts ───────────
+  // SMART status is already shown via the LED color, so the tooltip surfaces
+  // a different signal: the volume state.
   _onBayEnter(event, el) {
     if (!this._config.show_tooltip) return;
     const raw = el.getAttribute('data-tip');
     if (!raw) return;
-    const [i, smartStatus, diskTemp, badSectors, lowLife] = raw.split('|');
+    const [i, volState, diskTemp, badSectors, lowLife] = raw.split('|');
     const cfg = this._config;
 
     const existing = this.content.querySelector('.nas-tip');
     if (existing) existing.remove();
 
-    const smartHtml = smartStatus
-      ? (cfg.smart_ok.includes(smartStatus)
-          ? `<span style="color:${cfg.color_led_ok}">● ${smartStatus}</span>`
-          : `<span style="color:${cfg.color_led_error}">● ${smartStatus}</span>`)
+    const volStateHtml = volState
+      ? (cfg.smart_ok.includes(volState)
+          ? `<span style="color:${cfg.color_led_ok}">● ${volState}</span>`
+          : `<span style="color:${cfg.color_led_error}">● ${volState}</span>`)
       : `<span style="color:#555">○ N/D</span>`;
 
     const tempRow = diskTemp
@@ -462,7 +473,7 @@ class ManagedNasCard extends HTMLElement {
     tip.className = 'nas-tip';
     tip.innerHTML = `
       <div class="nt-title">${cfg.bay_label} ${i}</div>
-      <div class="nt-row"><span class="nt-lbl">SMART</span><span class="nt-val">${smartHtml}</span></div>
+      <div class="nt-row"><span class="nt-lbl">Volume</span><span class="nt-val">${volStateHtml}</span></div>
       ${tempRow}${badRow}${lifeRow}`;
 
     this.content.appendChild(tip);
@@ -647,7 +658,9 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._stepBar()}
 
       <h4 class="first">Dispositivo</h4>
-      ${this._input('Titolo (logo)', 'title')}
+      ${this._input('Titolo', 'title')}
+      ${this._input('Logo (URL immagine)', 'logo_url', 'text',
+          'es. /local/logo.png — carica l\'immagine in config/www/ e incolla qui il percorso. Altezza fissa ~22px per non sovrapporsi al titolo.')}
       ${this._input('Modello', 'model', 'text', 'es. RS1221+, TS-464 — lascia vuoto per nascondere')}
 
       <h4>Bay drive</h4>
@@ -688,7 +701,9 @@ class ManagedNasCardEditor extends HTMLElement {
       <details>
         <summary>${lbl} ${n}</summary>
         ${this._picker(`SMART status`, `smart_${n}`, 'sensor',
-            'Stato intelligente del disco — es. normal, attention')}
+            'Stato intelligente del disco — es. normal, attention. Usato per il colore del LED.')}
+        ${this._picker(`Stato volume`, `volstate_${n}`, 'sensor',
+            'Stato del volume — es. normal, attention, crashed. Mostrato nel tooltip al passaggio del mouse.')}
         ${this._picker(`Settori danneggiati`, `bad_${n}`, 'binary_sensor',
             'Binary: on = settori danneggiati rilevati')}
         ${this._picker(`Vita residua bassa`, `life_${n}`, 'binary_sensor',
@@ -738,20 +753,9 @@ class ManagedNasCardEditor extends HTMLElement {
       ${this._picker('Pulsante reboot', 'reboot_button', 'button')}
       ${this._picker('Pulsante shutdown', 'shutdown_button', 'button')}
 
-      <h4>Sensori base (opzionale)</h4>
-      <p class="hint">
-        Se tutti i tuoi sensori seguono un pattern comune, inserisci il prefisso qui
-        e la card li configurerà in automatico. Lascia vuoto se hai già selezionato
-        tutto manualmente sopra.
-      </p>
-      ${this._input('Prefisso sensori (sensor base)', 'sensor_base', 'text',
-          'es. sensor.mynas → genera sensor.mynas_temperatura, sensor.mynas_drive_1_temperatura...')}
-      ${this._input('Prefisso binary sensori (binary base)', 'binary_base', 'text',
-          'es. binary_sensor.mynas')}
-
       <div class="nav">
         <button class="nav-btn prev" onclick="this.getRootNode().host._goStep(1)">← Struttura</button>
-        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">→ Suffissi & Opzioni</button>
+        <button class="nav-btn next" onclick="this.getRootNode().host._goStep(3)">→ Sensori base & Opzioni</button>
       </div>
     </div>`;
   }
